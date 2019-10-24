@@ -14,6 +14,14 @@
 // ----------------------------------------------------------------------------
 // firmware dependent stuff starts here
 
+#define SCALELEN 12
+#define SCALECOUNT 2
+#define NOTECOUNT 4
+#define MODCOUNT 4
+#define TRACKCOUNT 4
+#define GATEPRESETCOUNT 16
+#define SPACEPRESETCOUNT 16
+
 
 // ----------------------------------------------------------------------------
 // shared types
