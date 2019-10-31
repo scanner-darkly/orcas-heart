@@ -29,65 +29,37 @@ u8 selected_preset;
 #define PARAMTIMER 0
 #define CLOCKTIMER 1
 
-u8 gatePresets[GATEPRESETCOUNT][NOTECOUNT] = {
-    {0b0001, 0b0010, 0b0100, 0b1000},
-    {0b0011, 0b0010, 0b0101, 0b1000},
-    {0b0011, 0b0110, 0b1101, 0b1000},
-    {0b0111, 0b0110, 0b1101, 0b1001},
+#define PAGE_MAIN 0
+#define PAGE_MATRIX 1
 
-    {0b0111, 0b0101, 0b1101, 0b1010},
-    {0b1111, 0b0101, 0b1110, 0b1010},
-    {0b1101, 0b1101, 0b1010, 0b1011},
-    {0b1101, 0b1000, 0b0110, 0b1101},
+#define PARAM_LEN 0
+#define PARAM_ALGOX 1
+#define PARAM_ALGOY 2
+#define PARAM_SHIFT 3
+#define PARAM_SPACE 4
+#define PARAM_TRANS 5
+#define PARAM_GATEL 6
 
-    {0b1001, 0b1100, 0b1110, 0b0111},
-    {0b1100, 0b0101, 0b0110, 0b0111},
-    {0b1100, 0b0110, 0b0110, 0b1100},
-    {0b0101, 0b1010, 0b0110, 0b1101},
 
-    {0b0101, 0b1001, 0b0110, 0b0101},
-    {0b0110, 0b0101, 0b0110, 0b1101},
-    {0b1100, 0b0011, 0b0110, 0b1100},
-    {0b1001, 0b0010, 0b0101, 0b1000}
-};
-
-u8 spacePresets[SPACEPRESETCOUNT] = {
-    0b0000, 0b0001, 0b0010, 0b0100,
-    0b1000, 0b0011, 0b0101, 0b1001,
-    0b0110, 0b1010, 0b1100, 0b0111,
-    0b1011, 0b1101, 0b1110, 0b1111
-};
-
-u16 speed, gateLength, transpose, length, algoX, algoY, shift, space;
-u8 scales[SCALECOUNT][SCALELEN] = {};
+u16 speed, gateLength, transpose;
 u8 scaleButtons[SCALECOUNT][SCALELEN] = {};
-u16 scaleCount[SCALECOUNT] = {};
-u8 scale = 0;
+u8 scaleAOctave, scaleBOctave;
 
-u16 globalCounter = 0;
-u16 spaceCounter = 0;
+u8 page = PAGE_MAIN;
+u8 param = PARAM_LEN;
+u8 matrix;
 
-u8 counter[TRACKCOUNT] = {0, 0, 0, 0};
-u8 divisor[TRACKCOUNT] = {2, 3, 5, 4};
-u8 phase[TRACKCOUNT]   = {2, 3, 5, 4};
-u16 weights[TRACKCOUNT] = {1, 2, 4, 7};
-u8 shifts[TRACKCOUNT] = {0, 0, 0, 0};
+engine_config_t config;
 
-u8 trackOn[TRACKCOUNT] = {0, 0, 0, 0};
-u8 weightOn[TRACKCOUNT] = {0, 0, 0, 0};
-u16 totalWeight = 0;
-
-u8 notes[NOTECOUNT];
-u8 gateOn[NOTECOUNT] = {0, 0, 0, 0};
-u8 gateChanged[NOTECOUNT] = {1, 1, 1, 1};
-
-u16 modCvs[MODCOUNT];
-u8 modGateOn[MODCOUNT] = {0, 0, 0, 0};
-u8 modGateChanged[MODCOUNT] = {1, 1, 1, 1};
-
-
+static void updateParameters(void);
+static void step(void);
+static void updateNotes(void);
+static void updateMods(void);
+static void updateDisplay(void);
+static void process_grid_press(u8 x, u8 y, u8 on);
+static void render_main_page(void);
 static char* itoa(int value, char* result, int base);
-static void process(void);
+
 
 // ----------------------------------------------------------------------------
 // functions for main.c
@@ -111,262 +83,31 @@ void init_control(void) {
     // load shared data
     // load current preset and its meta data
     
-    // TODO
     load_shared_data_from_flash(&shared);
     selected_preset = get_preset_index();
     load_preset_from_flash(selected_preset, &preset);
     load_preset_meta_from_flash(selected_preset, &meta);
 
+    // TODO read values from preset
+    config.length = 8;
+    config.algoX = 12;
+    config.algoY = 12;
+    config.shift = 0;
+    config.space = 0;
+    initEngine(&config);
+    // TODO update scale buttons from preset
+    updateScales(scaleButtons);
+    
     // set up any other initial values and timers
-    add_timed_event(PARAMTIMER, PARAMCYCLE, 1);
-    add_timed_event(CLOCKTIMER, 50, 1);
     set_as_i2c_leader();
-    
     set_jf_mode(1);
-    for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_JF, i + 1, 1);
+    for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_JF, i, 1);
     
     refresh_grid();
+
+    add_timed_event(PARAMTIMER, PARAMCYCLE, 1);
+    add_timed_event(CLOCKTIMER, 100, 1);
 }
-
-static void process_grid_press(u8 x, u8 y, u8 on) {
-    if (!on) return;
-    
-         if (x == 0 && y == 1) scaleButtons[0][0] = !scaleButtons[0][0];
-    else if (x == 1 && y == 0) scaleButtons[0][1] = !scaleButtons[0][1];
-    else if (x == 1 && y == 1) scaleButtons[0][2] = !scaleButtons[0][2];
-    else if (x == 2 && y == 0) scaleButtons[0][3] = !scaleButtons[0][3];
-    else if (x == 2 && y == 1) scaleButtons[0][4] = !scaleButtons[0][4];
-    else if (x == 4 && y == 1) scaleButtons[0][5] = !scaleButtons[0][5];
-    else if (x == 5 && y == 0) scaleButtons[0][6] = !scaleButtons[0][6];
-    else if (x == 5 && y == 1) scaleButtons[0][7] = !scaleButtons[0][7];
-    else if (x == 6 && y == 0) scaleButtons[0][8] = !scaleButtons[0][8];
-    else if (x == 6 && y == 1) scaleButtons[0][9] = !scaleButtons[0][9];
-    else if (x == 7 && y == 0) scaleButtons[0][10] = !scaleButtons[0][10];
-    else if (x == 7 && y == 1) scaleButtons[0][11] = !scaleButtons[0][11];
-    
-    else if (x == 0 && y == 4) scaleButtons[1][0] = !scaleButtons[1][0];
-    else if (x == 1 && y == 3) scaleButtons[1][1] = !scaleButtons[1][1];
-    else if (x == 1 && y == 4) scaleButtons[1][2] = !scaleButtons[1][2];
-    else if (x == 2 && y == 3) scaleButtons[1][3] = !scaleButtons[1][3];
-    else if (x == 2 && y == 4) scaleButtons[1][4] = !scaleButtons[1][4];
-    else if (x == 4 && y == 4) scaleButtons[1][5] = !scaleButtons[1][5];
-    else if (x == 5 && y == 3) scaleButtons[1][6] = !scaleButtons[1][6];
-    else if (x == 5 && y == 4) scaleButtons[1][7] = !scaleButtons[1][7];
-    else if (x == 6 && y == 3) scaleButtons[1][8] = !scaleButtons[1][8];
-    else if (x == 6 && y == 4) scaleButtons[1][9] = !scaleButtons[1][9];
-    else if (x == 7 && y == 3) scaleButtons[1][10] = !scaleButtons[1][10];
-    else if (x == 7 && y == 4) scaleButtons[1][11] = !scaleButtons[1][11];
-    
-    else if (x == 3 && y == 7) scale = 0;
-    else if (x == 4 && y == 7) scale = 1;
-    
-    refresh_grid();
-}
-
-static void updateScales(void) {
-    for (u8 s = 0; s < SCALECOUNT; s++) {
-        scaleCount[s] = 0;
-        for (u8 i = 0; i < SCALELEN; i++) {
-            if (scaleButtons[s][i]) {
-                scales[s][scaleCount[s]++] = i;
-            }
-        }
-        if (scaleCount[s] == 0) {
-            scaleCount[s] = 1;
-            scales[s][0] = 0;
-        }
-    }
-}
-
-static void renderScreen(void) {
-    clear_screen();
-    draw_str("ORCA'S HEART", 0, 15, 0);
-    
-    char s[8];
-
-    itoa(length, s, 10);
-    draw_str(s, 2, 9, 0);
-    itoa(algoX, s, 10);
-    draw_str(s, 3, 9, 0);
-    itoa(algoY, s, 10);
-    draw_str(s, 4, 9, 0);
-    itoa(shift, s, 10);
-    draw_str(s, 5, 9, 0);
-    
-    refresh_screen();
-}
-
-static void updateTrackParameters(void) {
-    divisor[0] = (algoX & 3) + 1;
-    phase[0] = algoX >> 5;
-   
-    for (u8 i = 1; i < TRACKCOUNT; i++) {
-        if (algoX & (1 << (i + 2))) divisor[i] = divisor[i-1] + 1; else divisor[i] = divisor[i-1] - 1;
-        if (divisor[i] < 0) divisor[i] = 1 - divisor[i];
-        if (divisor[i] == 0) divisor[i] = i + 2;
-        phase[i] = ((algoX & (0b11 << i)) + i) % divisor[i];
-    }
-   
-    for (u8 i = 0; i < TRACKCOUNT; i++) shifts[i] = shift;
-}
-
-static void updateParameters(void) {
-    // TODO
-    length = get_txi_param(0) >> 11; if (length == 0) length = 1;
-    speed = 400;
-    algoX = get_txi_param(2) >> 9;
-    algoY = get_txi_param(3) >> 9;
-    shift = get_txi_param(4) >> 10;
-    space = 0; // get_txi_param(5) >> 10;
-    transpose = get_txi_param(6) >> 10;
-    gateLength = get_txi_param(7) >> 10;
-    
-    updateTrackParameters();
-    updateScales();
-    renderScreen();
-}
-
-static void reset(void) {
-    spaceCounter = globalCounter = 0;
-    for (u8 i = 0; i < TRACKCOUNT; i++) counter[i] = 0;
-    // TODO trigger to reset output
-}
-
-static void updateCounters(void) {
-    if (++spaceCounter >= 16) spaceCounter = 0;
-
-    if (++globalCounter >= length) {
-        reset();
-    } else {
-        for (u8 i = 0; i < TRACKCOUNT; i++) counter[i]++;
-    }
-   
-    totalWeight = 0;
-    for (u8 i = 0; i < TRACKCOUNT; i++) {
-        trackOn[i] = ((counter[i] + phase[i]) / divisor[i]) & 1;
-        weightOn[i] = trackOn[i] ? weights[i] : 0;
-        totalWeight += weightOn[i];
-    }
-   
-    for (u8 i = 0; i < NOTECOUNT; i++) {
-        shifts[i] = shift;
-        if (shift > SCALELEN / 2) shifts[i] += i;
-    }
-}
-
-static void process_gate(u8 index, u8 on) {
-    if (!on) return;
-    
-    switch (index) {
-        case 0:
-            // clock;
-            break;
-        case 1:
-            // reset
-            reset();
-            break;
-        case 2:
-            // switch scale
-            scale = !scale;
-            refresh_grid();
-            break;
-        default:
-            break;
-    }
-}
-
-static void updateMod(void) {
-    for (u8 i = 0; i < MODCOUNT; i++) modGateOn[i] = trackOn[i % TRACKCOUNT];
-
-    modCvs[0] = totalWeight + weightOn[0];
-    modCvs[1] = weights[1] * (trackOn[3] + trackOn[2]) + weights[2] * (trackOn[0] + trackOn[2]);
-    modCvs[2] = weights[0] * (trackOn[2] + trackOn[1]) + weights[3] * (trackOn[0] + trackOn[3]);
-    modCvs[3] = weights[1] * (trackOn[1] + trackOn[2]) + weights[2] * (trackOn[2]  + trackOn[3]) + weights[3] * (trackOn[3] + trackOn[2]);
-   
-    for (u8 i = 0; i < MODCOUNT; i++) modCvs[i] %= 10;
-}
-
-static void calculateNote(int n) {
-    u8 mask = algoY >> 3;
-
-    notes[n] = 0;
-    for (u8 j = 0; j < TRACKCOUNT; j++) {
-        if (trackOn[j] && (mask & (1 << j))) notes[n] += weightOn[j];
-    }
-
-    if (algoY & 1) notes[n] += weightOn[(n + 1) % TRACKCOUNT];
-    if (algoY & 2) notes[n] += weightOn[(n + 2) % TRACKCOUNT];
-    if (algoY & 4) notes[n] += weightOn[(n + 3) % TRACKCOUNT];
-   
-    notes[n] += shifts[n];
-}
-   
-static void calculateNextNote(int n) {
-    u8 mask = gatePresets[algoY >> 3][n];
-    if (mask == 0) mask = 0b0101;
-    for (u8 i = 0; i < n; i++) mask = ((mask & 1) << 3) | (mask >> 1);
-   
-    u8 gate = 0;
-    for (u8 j = 0; j < TRACKCOUNT; j++) {
-        if (trackOn[j] && (mask & (1 << j))) gate = 1;
-        // if (mask & (1 << j)) gate = 1;
-    }
-
-    if (algoY & 1) gate ^= trackOn[n % TRACKCOUNT] << 1;
-    if (algoY & 2) gate ^= trackOn[(n + 2) % TRACKCOUNT] << 2;
-    if (algoY & 4) gate ^= trackOn[(n + 3) % TRACKCOUNT] << 3;
-
-    bool previousGatesOn = 1;
-    for (u8 i = 0; i < NOTECOUNT - 1; i++) previousGatesOn &= gateChanged[i] & gateOn[i];
-    if (n == NOTECOUNT - 1 && previousGatesOn) gate = 0;
-   
-    gateChanged[n] = gateOn[n] != gate;
-    gateOn[n] = gate;
-    if (gateChanged[n]) {
-        // TODO gateTimer[n] = speed * gateLength;
-        calculateNote(n);
-    }
-}
-
-void process() {
-    updateCounters();
-    updateMod();
-    for (u8 n = 0; n < NOTECOUNT; n++) calculateNextNote(n);
-    // TODO clockOut.trigger(1e-3);
-   
-    // TODO float trans = transpose;
-    // TODO if ((scale == 0 && getValue(SCALE_A_PARAM) > 0) || (scale == 1 && getValue(SCALE_B_PARAM) > 0)) trans += 1.f;
-   
-    for (u8 n = 0; n < NOTECOUNT; n++) {
-        note(n, scales[scale][notes[n] % scaleCount[scale]] + min(2, notes[n] / 12) * 12 + 20, 3000, gateOn[n]);
-        
-        // TODO
-        /*
-        int sp = spacePresets[(space | n) % SPACEPRESETCOUNT];
-        if (sp & spaceCounter) {
-            outputs[GATE_1_OUTPUT + n].setVoltage(0);
-        } else {
-            if (gateTimer[n] > 0) gateTimer[n] -= args.sampleTime;
-            if (gateTimer[n] < 0) gateTimer[n] = 0;
-            float g = 10.0; // (float)(modCvs[n] % 8) / 4.0 + 5.0;
-            outputs[GATE_1_OUTPUT + n].setVoltage(gateTimer[n] > 0 ? g : 0);
-        }
-        */
-    }
-   
-    // TODO
-    /*
-    for (int i = 0; i < MODCOUNT; i++) {
-        outputs[MOD_GATE_1_OUTPUT + i].setVoltage(modGateOn[i] ? 10.f : 0.f);
-        outputs[MOD_CV_1_OUTPUT + i].setVoltage((float)(modCvs[i] % 8) / 7.f * 10.f);
-    }
-    */
-   
-    // TODO outputs[CLOCK_OUTPUT].setVoltage(clockOut.process(args.sampleTime) ? 10.f : 0.f);
-    // TODO outputs[RESET_OUTPUT].setVoltage(resetOut.process(args.sampleTime) ? 10.f : 0.f);
-}
-
-
 
 void process_event(u8 event, u8 *data, u8 length) {
     switch (event) {
@@ -377,7 +118,6 @@ void process_event(u8 event, u8 *data, u8 length) {
             break;
     
         case GATE_RECEIVED:
-            process_gate(data[0], data[1]);
             break;
         
         case GRID_CONNECTED:
@@ -407,7 +147,7 @@ void process_event(u8 event, u8 *data, u8 length) {
             
         case TIMED_EVENT:
             if (data[0] == PARAMTIMER) updateParameters();
-            else if (data[0] == CLOCKTIMER) process();
+            else if (data[0] == CLOCKTIMER) step();
             break;
         
         case MIDI_CONNECTED:
@@ -436,33 +176,229 @@ void process_event(u8 event, u8 *data, u8 length) {
     }
 }
 
-void render_grid(void) {
-    if (!is_grid_connected()) return;
+
+// ----------------------------------------------------------------------------
+// controller
+
+void updateParameters() {
+    u32 knob = get_knob_value(0);
+    u32 newSpeed = 60000 / (((knob * 1980) >> 16) + 20);
     
-    clear_all_grid_leds();
-    set_grid_led(3, 7, 4);
-    set_grid_led(4, 7, 4);
-    set_grid_led(scale ? 4 : 3, 7, 15);
-    
-    u8 on = 15, off = 8, y;
-    for (u8 i = 0; i < SCALECOUNT; i++) {
-        y = i * 3;
-        set_grid_led(0, 1 + y, scaleButtons[i][0] ? on : off);
-        set_grid_led(1, 0 + y, scaleButtons[i][1] ? on : off);
-        set_grid_led(1, 1 + y, scaleButtons[i][2] ? on : off);
-        set_grid_led(2, 0 + y, scaleButtons[i][3] ? on : off);
-        set_grid_led(2, 1 + y, scaleButtons[i][4] ? on : off);
-        set_grid_led(4, 1 + y, scaleButtons[i][5] ? on : off);
-        set_grid_led(5, 0 + y, scaleButtons[i][6] ? on : off);
-        set_grid_led(5, 1 + y, scaleButtons[i][7] ? on : off);
-        set_grid_led(6, 0 + y, scaleButtons[i][8] ? on : off);
-        set_grid_led(6, 1 + y, scaleButtons[i][9] ? on : off);
-        set_grid_led(7, 0 + y, scaleButtons[i][10] ? on : off);
-        set_grid_led(7, 1 + y, scaleButtons[i][11] ? on : off);
+    if (newSpeed != speed) {
+        speed = newSpeed;
+        update_timer_interval(CLOCKTIMER, speed);
+    }
+
+    updateDisplay();
+}
+
+void step() {
+    clock();
+    updateNotes();
+    updateMods();
+    refresh_grid();
+}
+
+void updateNotes(void) {
+    // TODO implement transpose
+    u8 trans = 20;
+    u8 scale = getCurrentScale();
+    if (!scale && scaleAOctave) trans += 12;
+    else if (scale && scaleBOctave) trans += 12;
+
+    for (u8 n = 0; n < NOTECOUNT; n++) {
+        // TODO implement gate length
+        note(n, getNote(n) + trans, 10000, getGate(n));
     }
 }
 
-void render_arc(void) { }
+void updateMods(void) {
+    // TODO
+}
+
+void updateDisplay() {
+    clear_screen();
+    draw_str("ORCA'S HEART", 0, 15, 0);
+    
+    // TODO format better
+
+    char s[8];
+
+    itoa(config.length, s, 10);
+    draw_str(s, 2, 9, 0);
+    itoa(config.algoX, s, 10);
+    draw_str(s, 3, 9, 0);
+    itoa(config.algoY, s, 10);
+    draw_str(s, 4, 9, 0);
+    itoa(config.shift, s, 10);
+    draw_str(s, 5, 9, 0);
+    
+    refresh_screen();
+}
+
+void process_grid_press(u8 x, u8 y, u8 on) {
+    if (!on) return;
+    
+    if (x == 0 && y == 6) setCurrentScale(0);
+    else if (x == 0 && y == 7) setCurrentScale(1);
+    else if (x == 15 && y == 6) scaleAOctave = !scaleAOctave;
+    else if (x == 15 && y == 7) scaleBOctave = !scaleBOctave;
+    else if (y > 5 && y < 8 && x > 1 && x < 14) {
+        scaleButtons[y - 6][x - 2] = !scaleButtons[y - 6][x - 2];
+        updateScales(scaleButtons);
+    }
+    else if (x == 0 && y == 0) param = PARAM_LEN;
+    else if (x == 1 && y == 0) param = PARAM_ALGOX;
+    else if (x == 1 && y == 1) param = PARAM_ALGOY;
+    else if (x == 14 && y == 0) param = PARAM_SHIFT;
+    else if (x == 14 && y == 1) param = PARAM_SPACE;
+    else if (x == 15 && y == 0) param = PARAM_TRANS;
+    else if (x == 15 && y == 1) param = PARAM_GATEL;
+    else if (y > 2 && y < 5) {
+        switch (param) {
+
+            case PARAM_LEN:
+                config.length = (y - 3) * 16 + x + 1;
+                updateLength(config.length);
+                break;
+            
+            case PARAM_ALGOX:
+                if (y == 3 && x > 3 && x < 12) {
+                    config.algoX = ((x - 4) << 4) + (config.algoX & 15);
+                    updateAlgoX(config.algoX);
+                } else if (y == 4) {
+                    config.algoX = (config.algoX & 0b1110000) + x;
+                    updateAlgoX(config.algoX);
+                }
+                break;
+            
+            case PARAM_ALGOY:
+                if (y == 3 && x > 3 && x < 12) {
+                    config.algoY = (x - 4) * 16 + (config.algoY & 15);
+                    updateAlgoY(config.algoY);
+                } else if (y == 4) {
+                    config.algoY = (config.algoY & 0b1110000) + x;
+                    updateAlgoY(config.algoY);
+                }
+                break;
+            
+            case PARAM_SHIFT:
+                if (y == 3 && x > 1 && x < 15) {
+                    config.shift = x - 2;
+                    updateShift(config.shift);
+                }
+                break;
+            
+            case PARAM_SPACE:
+                if (y == 3) {
+                    config.space = x;
+                    updateSpace(config.space);
+                }
+                break;
+            
+            case PARAM_TRANS:
+                break;
+            
+            case PARAM_GATEL:
+                break;
+            
+            default:
+                break;
+        }
+    }
+    
+    refresh_grid();
+}
+
+void render_grid() {
+    if (!is_grid_connected()) return;
+    
+    clear_all_grid_leds();
+    if (page == PAGE_MAIN) render_main_page();
+}
+
+void render_main_page() {
+    u8 on = 12, off = 5, y, l;
+    
+    set_grid_led(0, 6, off);
+    set_grid_led(0, 7, off);
+    set_grid_led(0, getCurrentScale() ? 7 : 6, on);
+    
+    set_grid_led(15, 6, scaleAOctave ? on : off);
+    set_grid_led(15, 7, scaleBOctave ? on : off);
+
+    set_grid_led(15, 0, getScaleCount(0) > 1 ? 15 : 8);
+    set_grid_led(15, 1, getScaleCount(1) > 1 ? 15 : 8);
+    
+    for (u8 i = 0; i < SCALECOUNT; i++) {
+        y = 8 - SCALECOUNT + i;
+        for (u8 j = 0; j < SCALELEN; j++) set_grid_led(2 + j, y, scaleButtons[i][j] ? on : off);
+    }
+    
+    set_grid_led(0, 0, off);
+    set_grid_led(1, 0, off);
+    set_grid_led(0, 1, off);
+    set_grid_led(1, 1, off);
+    set_grid_led(14, 0, off);
+    set_grid_led(15, 0, off);
+    set_grid_led(14, 1, off);
+    set_grid_led(15, 1, off);
+    
+    switch (param) {
+        
+        case PARAM_LEN:
+            set_grid_led(0, 0, on);
+            for (u8 x = 0; x < 16; x++) for (u8 y = 3; y < 4; y++) set_grid_led(x, y, off);
+            y = 3;
+            l = config.length;
+            if (config.length > 16) {
+                for (u8 i = 0; i < 16; i++) set_grid_led(i, 3, on);
+                y = 4;
+                l -=16;
+            }
+            for (u8 i = 0; i < l; i++) set_grid_led(i, y, on);
+            break;
+        
+        case PARAM_ALGOX:
+            set_grid_led(1, 0, on);
+            l = (config.algoX >> 4);
+            for (u8 i = 0; i < 8; i++) set_grid_led(i + 4, 3, i == l ? on : off);
+            l = (config.algoX & 15);
+            for (u8 i = 0; i < 16; i++) set_grid_led(i, 4, i == l ? on : off);
+            break;
+        
+        case PARAM_ALGOY:
+            set_grid_led(1, 1, on);
+            l = config.algoY >> 4;
+            for (u8 i = 0; i < 8; i++) set_grid_led(i + 4, 3, i == l ? on : off);
+            l = (config.algoY & 15);
+            for (u8 i = 0; i < 16; i++) set_grid_led(i, 4, i == l ? on : off);
+            break;
+        
+        case PARAM_SHIFT:
+            set_grid_led(14, 0, on);
+            for (u8 x = 0; x < 13; x++) set_grid_led(x + 2, 3, x == config.shift ? on : off);
+            break;
+        
+        case PARAM_SPACE:
+            set_grid_led(14, 1, on);
+            for (u8 x = 0; x < 16; x++) set_grid_led(x, 3, x == config.space ? on : off);
+            break;
+        
+        case PARAM_TRANS:
+            set_grid_led(15, 0, on);
+            break;
+        
+        case PARAM_GATEL:
+            set_grid_led(15, 1, on);
+            break;
+        
+        default:
+            break;
+    }
+}
+
+void render_arc() { }
 
 // http://www.jb.man.ac.uk/~slowe/cpp/itoa.html
 // http://embeddedgurus.com/stack-overflow/2009/06/division-of-integers-by-constants/
@@ -507,3 +443,18 @@ char* itoa(int value, char* result, int base) {
 	}
 	return result;
 }
+
+/*
+transpose
+gate length
+presets
+i2c config
+switch outputs notes/mod cvs
+clock input
+clock / reset outputs
+visualize values
+
+speed for ansible
+txi / teletype cv input
+additional gate inputs on ansible/teletype
+*/
