@@ -55,6 +55,10 @@ typedef struct {
 void initEngine(engine_config_t *config);
 void updateScales(uint8_t scales[SCALECOUNT][SCALELEN]);
 
+uint8_t getAlgoX(void);
+uint8_t getAlgoY(void);
+uint8_t getShift(void);
+
 void updateLength(uint8_t length);
 void updateAlgoX(uint8_t algoX);
 void updateAlgoY(uint8_t algoY);

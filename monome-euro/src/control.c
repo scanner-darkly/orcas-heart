@@ -40,6 +40,11 @@ u8 selected_preset;
 #define PARAM_TRANS 5
 #define PARAM_GATEL 6
 
+#define MATRIXOUTS 12
+#define MATRIXINS 8
+#define MATRIXCOUNT 2
+#define MATRIXMAXSTATE 1
+#define MATRIXGATEWEIGHT 60
 
 u16 speed, gateLength, transpose;
 u8 scaleButtons[SCALECOUNT][SCALELEN] = {};
@@ -47,17 +52,23 @@ u8 scaleAOctave, scaleBOctave;
 
 u8 page = PAGE_MAIN;
 u8 param = PARAM_LEN;
-u8 matrix;
+u8 matrix[MATRIXCOUNT][MATRIXINS][MATRIXOUTS];
+u32 matrix_values[MATRIXOUTS];
+u8 mi;
 
 engine_config_t config;
 
-static void updateParameters(void);
+static void update_parameters(void);
 static void step(void);
-static void updateNotes(void);
-static void updateMods(void);
-static void updateDisplay(void);
+static void update_notes(void);
+static void update_mods(void);
+static void update_matrix(void);
+static void update_display(void);
 static void process_grid_press(u8 x, u8 y, u8 on);
+static void process_grid_main(u8 x, u8 y, u8 on);
+static void process_grid_matrix(u8 x, u8 y, u8 on);
 static void render_main_page(void);
+static void render_matrix_page(void);
 static char* itoa(int value, char* result, int base);
 
 
@@ -97,6 +108,7 @@ void init_control(void) {
     initEngine(&config);
     // TODO update scale buttons from preset
     updateScales(scaleButtons);
+    // TODO load matrix from preset
     
     // set up any other initial values and timers
     set_as_i2c_leader();
@@ -146,7 +158,7 @@ void process_event(u8 event, u8 *data, u8 length) {
             break;
             
         case TIMED_EVENT:
-            if (data[0] == PARAMTIMER) updateParameters();
+            if (data[0] == PARAMTIMER) update_parameters();
             else if (data[0] == CLOCKTIMER) step();
             break;
         
@@ -180,7 +192,7 @@ void process_event(u8 event, u8 *data, u8 length) {
 // ----------------------------------------------------------------------------
 // controller
 
-void updateParameters() {
+void update_parameters() {
     u32 knob = get_knob_value(0);
     u32 newSpeed = 60000 / (((knob * 1980) >> 16) + 20);
     
@@ -189,19 +201,20 @@ void updateParameters() {
         update_timer_interval(CLOCKTIMER, speed);
     }
 
-    updateDisplay();
+    update_display();
 }
 
 void step() {
     clock();
-    updateNotes();
-    updateMods();
+    update_notes();
+    update_mods();
+    update_matrix();
     refresh_grid();
 }
 
-void updateNotes(void) {
+void update_notes(void) {
     // TODO implement transpose
-    u8 trans = 20;
+    u8 trans = 8;
     u8 scale = getCurrentScale();
     if (!scale && scaleAOctave) trans += 12;
     else if (scale && scaleBOctave) trans += 12;
@@ -212,11 +225,45 @@ void updateNotes(void) {
     }
 }
 
-void updateMods(void) {
+void update_mods(void) {
     // TODO
 }
 
-void updateDisplay() {
+void update_matrix(void) {
+    u8 prevScale = matrix_values[8];
+    
+    for (int m = 0; m < MATRIXOUTS; m++) {
+        matrix_values[m] = 0;
+        for (u8 i = 0; i < 4; i++) {
+            matrix_values[m] += getNote(i) * matrix[0][i][m] +
+                                getGate(i) * matrix[0][i + 4][m] * MATRIXGATEWEIGHT +
+                                getModCV(i) * matrix[1][i][m] * 12 +
+                                getModGate(i) * matrix[1][i + 4][m] * MATRIXGATEWEIGHT;
+        }
+    }
+    
+    u32 v;
+    
+    v = (matrix_values[0] * 4) / (15 * MATRIXMAXSTATE) + config.length;
+    if (v > 32) v = 32;
+    updateLength(v);
+    
+    v = (matrix_values[2] * 127) / (120 * MATRIXMAXSTATE) + config.algoX;
+    if (v > 127) v = 127;
+    updateAlgoX(v);
+    
+    v = (matrix_values[3] * 127) / (120 * MATRIXMAXSTATE) + config.algoY;
+    if (v > 127) v = 127;
+    updateAlgoY(v);
+    
+    v = matrix_values[4] / (10 * MATRIXMAXSTATE) + config.shift;
+    if (v > 12) v = 12;
+    updateShift(v);
+    
+    if (matrix_values[8] && !prevScale) setCurrentScale(getCurrentScale() ? 0 : 1);
+}
+
+void update_display() {
     clear_screen();
     draw_str("ORCA'S HEART", 0, 15, 0);
     
@@ -237,6 +284,25 @@ void updateDisplay() {
 }
 
 void process_grid_press(u8 x, u8 y, u8 on) {
+    if (x == 0 && y == 0) {
+        if (on) page = page == PAGE_MAIN ? PAGE_MATRIX : PAGE_MAIN;
+        refresh_grid();
+        return;
+    }
+    
+    if (page == PAGE_MAIN) process_grid_main(x, y, on);
+    else if (page == PAGE_MATRIX) process_grid_matrix(x, y, on);
+}
+    
+void render_grid() {
+    if (!is_grid_connected()) return;
+    
+    clear_all_grid_leds();
+    if (page == PAGE_MAIN) render_main_page();
+    else if (page == PAGE_MATRIX) render_matrix_page();
+}
+
+void process_grid_main(u8 x, u8 y, u8 on) {
     if (!on) return;
     
     if (x == 0 && y == 6) setCurrentScale(0);
@@ -247,7 +313,7 @@ void process_grid_press(u8 x, u8 y, u8 on) {
         scaleButtons[y - 6][x - 2] = !scaleButtons[y - 6][x - 2];
         updateScales(scaleButtons);
     }
-    else if (x == 0 && y == 0) param = PARAM_LEN;
+    else if (x == 0 && y == 1) param = PARAM_LEN;
     else if (x == 1 && y == 0) param = PARAM_ALGOX;
     else if (x == 1 && y == 1) param = PARAM_ALGOY;
     else if (x == 14 && y == 0) param = PARAM_SHIFT;
@@ -310,15 +376,8 @@ void process_grid_press(u8 x, u8 y, u8 on) {
     refresh_grid();
 }
 
-void render_grid() {
-    if (!is_grid_connected()) return;
-    
-    clear_all_grid_leds();
-    if (page == PAGE_MAIN) render_main_page();
-}
-
 void render_main_page() {
-    u8 on = 12, off = 5, y, l;
+    u8 on = 15, prm = 8, off = 3, y, l;
     
     set_grid_led(0, 6, off);
     set_grid_led(0, 7, off);
@@ -335,20 +394,20 @@ void render_main_page() {
         for (u8 j = 0; j < SCALELEN; j++) set_grid_led(2 + j, y, scaleButtons[i][j] ? on : off);
     }
     
-    set_grid_led(0, 0, off);
-    set_grid_led(1, 0, off);
-    set_grid_led(0, 1, off);
-    set_grid_led(1, 1, off);
-    set_grid_led(14, 0, off);
-    set_grid_led(15, 0, off);
-    set_grid_led(14, 1, off);
-    set_grid_led(15, 1, off);
+    set_grid_led(0, 0, prm);
+    set_grid_led(0, 1, prm);
+    set_grid_led(1, 0, prm);
+    set_grid_led(1, 1, prm);
+    set_grid_led(14, 0, prm);
+    set_grid_led(15, 0, prm);
+    set_grid_led(14, 1, prm);
+    set_grid_led(15, 1, prm);
     
     switch (param) {
         
         case PARAM_LEN:
-            set_grid_led(0, 0, on);
-            for (u8 x = 0; x < 16; x++) for (u8 y = 3; y < 4; y++) set_grid_led(x, y, off);
+            set_grid_led(0, 1, on);
+            for (u8 x = 0; x < 16; x++) for (u8 y = 3; y < 5; y++) set_grid_led(x, y, off);
             y = 3;
             l = config.length;
             if (config.length > 16) {
@@ -377,7 +436,7 @@ void render_main_page() {
         
         case PARAM_SHIFT:
             set_grid_led(14, 0, on);
-            for (u8 x = 0; x < 13; x++) set_grid_led(x + 2, 3, x == config.shift ? on : off);
+            for (u8 x = 0; x < 13; x++) set_grid_led(x + 2, 3, x == config.shift ? on : (x == getShift() ? off + 3 : off));
             break;
         
         case PARAM_SPACE:
@@ -396,6 +455,38 @@ void render_main_page() {
         default:
             break;
     }
+}
+
+void process_grid_matrix(u8 x, u8 y, u8 on) {
+    if (!on) return;
+    
+    if (x == 2 && y > 2 && y < 5) {
+        mi = y - 3;
+        refresh_grid();
+        return;
+    }
+    
+    if (x < 4) return;
+    
+    x -= 4;
+    matrix[mi][y][x] = (matrix[mi][y][x] + 1) % (MATRIXMAXSTATE + 1);
+    update_matrix();
+    refresh_grid();
+}
+
+void render_matrix_page() {
+    u8 on = 15, off = 3;
+
+    set_grid_led(0, 0, on);
+    
+    set_grid_led(2, 3, mi ? off : on);
+    set_grid_led(2, 4, mi ? on : off);
+    
+    u8 d = 12 / (MATRIXMAXSTATE + 1);
+    
+    for (u8 x = 0; x < MATRIXOUTS; x++)
+        for (u8 y = 0; y < MATRIXINS; y++)
+            set_grid_led(x + 4, y, matrix[mi][y][x] * d + 4);
 }
 
 void render_arc() { }
@@ -452,7 +543,14 @@ i2c config
 switch outputs notes/mod cvs
 clock input
 clock / reset outputs
+visualize value changes from matrix
 visualize values
+
+copy scales
+clear matrix
+randomize matrix
+clear column
+pause matrix
 
 speed for ansible
 txi / teletype cv input

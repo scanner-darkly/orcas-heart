@@ -84,6 +84,18 @@ void updateScales(uint8_t scales[SCALECOUNT][SCALELEN]) {
     }
 }
 
+uint8_t getAlgoX(void) {
+    return engine.config.algoX;
+}
+
+uint8_t getAlgoY(void) {
+    return engine.config.algoY;
+}
+
+uint8_t getShift() {
+    return engine.config.shift;
+}
+
 void updateLength(uint8_t length) {
     engine.config.length = length;
 }
