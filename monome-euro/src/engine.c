@@ -39,7 +39,7 @@ uint8_t spacePresets[SPACEPRESETCOUNT] = {
     0b1011, 0b1101, 0b1110, 0b1111
 };
 
-uint16_t weights[TRACKCOUNT] = {1, 2, 4, 7, 8, 11};
+uint16_t weights[TRACKCOUNT] = {1, 2, 4, 7, 9, 12};
 
 engine_t engine;
 
@@ -76,10 +76,6 @@ void updateScales(uint8_t scales[SCALECOUNT][SCALELEN]) {
             if (scales[s][i]) {
                 engine.scales[s][engine.scaleCount[s]++] = i;
             }
-        }
-        if (engine.scaleCount[s] == 0) {
-            engine.scaleCount[s] = 1;
-            engine.scales[s][0] = 0;
         }
     }
 }
@@ -234,7 +230,8 @@ void calculateNote(int n) {
     note += engine.shifts[n];
     
     uint8_t octave = (note / 12 < 2 ? note / 12 : 2) * 12;
-    engine.notes[n] = engine.scales[engine.scale ? 1 : 0][note % engine.scaleCount[engine.scale ? 1 : 0]] + octave;
+    uint8_t sc = engine.scale ? 1 : 0;
+    engine.notes[n] = engine.scaleCount[sc] ? engine.scales[sc][note % engine.scaleCount[sc]] + octave : 0;
 }
    
 void calculateNextNote(int n) {
@@ -259,6 +256,8 @@ void calculateNextNote(int n) {
     u8 space = spacePresets[(engine.config.space | n) % SPACEPRESETCOUNT];
     space |= space << 4;
     if (spacePresets[(engine.config.space | n) % SPACEPRESETCOUNT] & engine.spaceCounter) gate = 0;
+   
+    if (!engine.scaleCount[engine.scale]) gate = 0;
    
     engine.gateChanged[n] = engine.gateOn[n] != gate;
     engine.gateOn[n] = gate;
