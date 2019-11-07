@@ -39,7 +39,7 @@ uint8_t spacePresets[SPACEPRESETCOUNT] = {
     0b1011, 0b1101, 0b1110, 0b1111
 };
 
-uint16_t weights[TRACKCOUNT] = {1, 2, 4, 7, 9, 12};
+uint16_t weights[TRACKCOUNT] = {1, 2, 4, 7, 5, 3};
 
 engine_t engine;
 
@@ -150,6 +150,10 @@ uint8_t getGate(uint8_t index) {
     return engine.gateOn[index];
 }
 
+uint8_t getVolume(uint8_t index) {
+    return engine.volume[index];
+}
+
 uint8_t getGateChanged(uint8_t index) {
     return engine.gateChanged[index];
 }
@@ -255,7 +259,7 @@ void calculateNextNote(int n) {
     
     u8 space = spacePresets[(engine.config.space | n) % SPACEPRESETCOUNT];
     space |= space << 4;
-    if (spacePresets[(engine.config.space | n) % SPACEPRESETCOUNT] & engine.spaceCounter) gate = 0;
+    engine.volume[n] = spacePresets[(engine.config.space | n) % SPACEPRESETCOUNT] & engine.spaceCounter ? 1 : 0;
    
     if (!engine.scaleCount[engine.scale]) gate = 0;
    

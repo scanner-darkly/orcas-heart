@@ -45,6 +45,7 @@ typedef struct {
     uint8_t notes[NOTECOUNT];
     uint8_t gateOn[NOTECOUNT];
     uint8_t gateChanged[NOTECOUNT];
+    uint8_t volume[NOTECOUNT];
     
     uint16_t modCvs[MODCOUNT];
     uint8_t modGateOn[MODCOUNT];
@@ -74,6 +75,7 @@ uint8_t getScaleCount(uint8_t scale);
 
 uint8_t getNote(uint8_t index);
 uint8_t getGate(uint8_t index);
+uint8_t getVolume(uint8_t index);
 uint8_t getGateChanged(uint8_t index);
 uint16_t getModCV(uint8_t index);
 uint8_t getModGate(uint8_t index);

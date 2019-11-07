@@ -16,23 +16,16 @@
 #include "interface.h"
 #include "engine.h"
 
-preset_meta_t meta;
-preset_data_t preset;
-shared_data_t shared;
-u8 selected_preset;
-
-// ----------------------------------------------------------------------------
-// firmware dependent stuff starts here
 
 #define PARAMCYCLE 4
 
 #define PARAMTIMER 0
 #define CLOCKTIMER 1
 
-#define PAGE_MAIN 0
+#define PAGE_PARAM   0
 #define PAGE_MATRIX 1
 
-#define PARAM_LEN 0
+#define PARAM_LEN   0
 #define PARAM_ALGOX 1
 #define PARAM_ALGOY 2
 #define PARAM_SHIFT 3
@@ -40,44 +33,75 @@ u8 selected_preset;
 #define PARAM_TRANS 5
 #define PARAM_GATEL 6
 
-#define MATRIXOUTS 12
-#define MATRIXINS 8
+#define MATRIXOUTS 10
+#define MATRIXINS   7
 #define MATRIXCOUNT 2
 #define MATRIXMAXSTATE 1
 #define MATRIXGATEWEIGHT 60
 
+// presets and data stored in presets
+
+shared_data_t shared;
+preset_meta_t meta;
+preset_data_t preset;
+u8 selected_preset;
+
+engine_config_t config;
 u16 speed, gateLength, transpose;
-u32 speedMod;
+u8 matrix[MATRIXCOUNT][MATRIXINS][MATRIXOUTS];
+u8 matrix_on[MATRIXCOUNT];
+
+u8 page;
+u8 param;
+u8 mi;
+
+// UI and local vars
+
 u8 scaleButtons[SCALECOUNT][SCALELEN] = {};
 u8 scaleAOctave, scaleBOctave;
 
-u8 page = PAGE_MAIN;
-u8 param = PARAM_LEN;
-u8 matrix[MATRIXCOUNT][MATRIXINS][MATRIXOUTS];
+u32 speedMod;
 s32 matrix_values[MATRIXOUTS];
-u8 matrix_on[MATRIXCOUNT];
-u8 matrix_inv[MATRIXCOUNT];
-u8 mi;
 
-engine_config_t config;
+// prototypes
 
-static void update_parameters(void);
 static void step(void);
 
-static void update_notes(void);
-static void update_mods(void);
-
+static void update_parameters(void);
 static void update_matrix(void);
+
+static void output_notes(void);
+static void output_mods(void);
+
+static void toggle_scale(u8 manual);
+static void toggle_scaleA_octave(void);
+static void toggle_scaleB_octave(void);
+void toggle_scale_note(u8 scale, u8 note);
+
+void set_length(u8 length);
+void set_algoX(u8 algoX);
+void set_algoY(u8 algoY);
+void set_shift(u8 shift);
+void set_space(u8 space);
+
+static void select_page(u8 p);
+static void select_param(u8 p);
+static void select_matrix(u8 m);
+static void toggle_matrix_mute(u8 m);
+static void clear_current_matrix(void);
+static void randomize_current_matrix(void);
+static void toggle_matrix_cell(u8 in, u8 out);
+
 static void update_display(void);
 
 static void process_gate(u8 index, u8 on);
 static void process_grid_press(u8 x, u8 y, u8 on);
-
-static void process_grid_main(u8 x, u8 y, u8 on);
+static void process_grid_param(u8 x, u8 y, u8 on);
 static void process_grid_matrix(u8 x, u8 y, u8 on);
 
-static void render_main_page(void);
+static void render_param_page(void);
 static void render_matrix_page(void);
+
 static char* itoa(int value, char* result, int base);
 
 
@@ -115,10 +139,21 @@ void init_control(void) {
     config.shift = 0;
     config.space = 0;
     initEngine(&config);
+    
+    speed = 400;
+    gateLength = 1;
+    transpose = 0;
+    
     // TODO update scale buttons from preset
     updateScales(scaleButtons);
+    
     // TODO load matrix from preset
     for (u8 i = 0; i < MATRIXCOUNT; i++) matrix_on[i] = 1;
+    
+    // TODO load page / param from preset
+    page = PAGE_PARAM;
+    param = PARAM_LEN;
+    mi = 0;
     
     // set up any other initial values and timers
     set_as_i2c_leader();
@@ -201,30 +236,29 @@ void process_event(u8 event, u8 *data, u8 length) {
 
 
 // ----------------------------------------------------------------------------
-// controller
+// actions
+
+void step() {
+    clock();
+    output_notes();
+    output_mods();
+    update_matrix();
+    refresh_grid();
+}
 
 void update_parameters() {
-    s32 sp = ((get_knob_value(0) * 1980) >> 16) + 20 + speedMod;
+    u32 sp = ((get_knob_value(0) * 1980) >> 16) + 20 + speedMod;
     if (sp > 2000) sp = 2000; else if (sp < 20) sp = 20;
     u32 newSpeed = 60000 / sp;
     
     if (newSpeed != speed) {
         speed = newSpeed;
         update_timer_interval(CLOCKTIMER, speed);
+        update_display();
     }
-
-    update_display();
 }
 
-void step() {
-    clock();
-    update_notes();
-    update_mods();
-    update_matrix();
-    refresh_grid();
-}
-
-void update_notes(void) {
+void output_notes(void) {
     // TODO implement transpose
     u8 trans = 8;
     u8 scale = getCurrentScale();
@@ -233,83 +267,168 @@ void update_notes(void) {
 
     for (u8 n = 0; n < NOTECOUNT; n++) {
         // TODO implement gate length
-        note(n, getNote(n) + trans, 10000, getGate(n));
+        note(n, getNote(n) + trans, getVolume(n) * getModCV(0) * 500 + 5000, getGate(n));
     }
 }
 
-void update_mods(void) {
+void output_mods(void) {
     // TODO
 }
 
 void update_matrix(void) {
     u8 prevScale = matrix_values[7];
-    u8 prevInv1 = matrix_values[10];
-    u8 prevInv2 = matrix_values[11];
+    u8 prevOctaveA = matrix_values[8];
+    u8 prevOctaveB = matrix_values[9];
     
-    s32 v;
-    
+    u8 counts[MATRIXOUTS];
     for (int m = 0; m < MATRIXOUTS; m++) {
         matrix_values[m] = 0;
+        counts[m] = 0;
         for (u8 i = 0; i < 4; i++) {
             if (matrix_on[0]) {
-                v = getNote(i) * matrix[0][i][m] + getGate(i) * matrix[0][i + 4][m] * MATRIXGATEWEIGHT;
-                if (matrix_inv[0]) v *= -1;
-                matrix_values[m] += v;
+                counts[m] += matrix[0][i][m];
+                matrix_values[m] += getNote(i) * matrix[0][i][m];
+                if (i < 3) {
+                    counts[m] += matrix[0][i + 4][m];
+                    matrix_values[m] += getGate(i) * matrix[0][i + 4][m] * MATRIXGATEWEIGHT;
+                }
             }
             if (matrix_on[1]) {
-                v = getModCV(i) * matrix[1][i][m] * 12 + getModGate(i) * matrix[1][i + 4][m] * MATRIXGATEWEIGHT;
-                if (matrix_inv[1]) v *= -1;
-                matrix_values[m] += v;
+                counts[m] += matrix[1][i][m];
+                matrix_values[m] += getModCV(i) * matrix[1][i][m] * 12;
+                if (i < 3) {
+                    matrix_values[m] += getModGate(i) * matrix[1][i + 4][m] * MATRIXGATEWEIGHT;
+                    counts[m] += matrix[1][i + 4][m];
+                }
             }
         }
     }
     
-    // value * (max - min) / 240 + param
+    s32 v;
+    // value * (max - min) / 120 + param
     
-    v = (matrix_values[0] * 198) / (24 * MATRIXMAXSTATE);
+    v = (matrix_values[0] * 198) / (12 * MATRIXMAXSTATE * counts[0]);
     speedMod = v;
     
-    v = (matrix_values[1] * 31) / (240 * MATRIXMAXSTATE) + config.length;
+    v = (matrix_values[1] * 31) / (120 * MATRIXMAXSTATE * counts[1]) + config.length;
     if (v > 32) v = 32; else if (v < 1) v = 1;
     updateLength(v);
     
-    v = (matrix_values[2] * 127) / (240 * MATRIXMAXSTATE) + config.algoX;
+    v = (matrix_values[2] * 127) / (120 * MATRIXMAXSTATE * counts[2]) + config.algoX;
     if (v > 127) v = 127; else if (v < 0) v = 0;
     updateAlgoX(v);
     
-    v = (matrix_values[3] * 127) / (240 * MATRIXMAXSTATE) + config.algoY;
+    v = (matrix_values[3] * 127) / (120 * MATRIXMAXSTATE * counts[3]) + config.algoY;
     if (v > 127) v = 127; else if (v < 0) v = 0;
     updateAlgoY(v);
     
-    v = matrix_values[4] / (20 * MATRIXMAXSTATE) + config.shift;
+    v = matrix_values[4] / (10 * MATRIXMAXSTATE * counts[4]) + config.shift;
     if (v > 12) v = 12; else if (v < 0) v = 0;
     updateShift(v);
     
-    v = (matrix_values[5] * 15) / (240 * MATRIXMAXSTATE) + config.space;
+    v = (matrix_values[5] * 15) / (120 * MATRIXMAXSTATE * counts[5]) + config.space;
     if (v > 12) v = 12; else if (v < 0) v = 0;
     updateSpace(v);
     
-    if (matrix_values[7] && !prevScale) {
-        setCurrentScale((getCurrentScale() + 1) % SCALECOUNT);
-        refresh_grid();
-    }
-    if (matrix_values[8] > 0) {
-        scaleAOctave = 1;
-        refresh_grid();
-    }
-    if (matrix_values[9] > 0) {
-        scaleBOctave = 1;
-        refresh_grid();
-    }
-    if (matrix_values[10] && !prevInv1) {
-        matrix_inv[0] = !matrix_inv[0];
-        refresh_grid();
-    }
-    if (matrix_values[11] && !prevInv2) {
-        matrix_inv[1] = !matrix_inv[1];
-        refresh_grid();
-    }
+    if (matrix_values[7] > prevScale) toggle_scale(0);
+    
+    if (matrix_values[8] > prevOctaveA) toggle_scaleA_octave();
+
+    if (matrix_values[9] > prevOctaveB) toggle_scaleB_octave();
 }
+
+void toggle_scale(u8 manual) {
+    u8 newScale = (getCurrentScale() + 1) % SCALECOUNT;
+    if (getScaleCount(newScale) == 0 && !manual) return;
+    setCurrentScale(newScale);
+    if (page == PAGE_PARAM) refresh_grid();
+}
+
+void toggle_scaleA_octave() {
+    scaleAOctave = !scaleAOctave;
+    if (page == PAGE_PARAM) refresh_grid();
+}
+
+void toggle_scaleB_octave() {
+    scaleBOctave = !scaleBOctave;
+    if (page == PAGE_PARAM) refresh_grid();
+}
+
+void toggle_scale_note(u8 scale, u8 note) {
+    scaleButtons[scale][note] = !scaleButtons[scale][note];
+    updateScales(scaleButtons);
+    if (page == PAGE_PARAM) refresh_grid();
+}
+
+void select_page(u8 p) {
+    page = p;
+    refresh_grid();
+}
+
+void select_param(u8 p) {
+    param = p;
+    select_page(PAGE_PARAM);
+}
+
+void select_matrix(u8 m) {
+    mi = m;
+    select_page(PAGE_MATRIX);
+}
+
+void toggle_matrix_mute(u8 m) {
+    matrix_on[m] = !matrix_on[m];
+    refresh_grid();
+}
+
+void clear_current_matrix() {
+    for (int i = 0; i < MATRIXINS; i++)
+        for (int o = 0; o < MATRIXOUTS; o++)
+            matrix[mi][i][o] = 0;
+    refresh_grid();
+}
+    
+void randomize_current_matrix() {
+    clear_current_matrix();
+    for (u8 i = 0; i < 10; i++)
+        matrix[mi][rand() % MATRIXINS][rand() % MATRIXOUTS] = 1;
+    refresh_grid();
+}
+
+void toggle_matrix_cell(u8 in, u8 out) {
+    matrix[mi][in][out] = (matrix[mi][in][out] + 1) % (MATRIXMAXSTATE + 1);
+    update_matrix();
+    refresh_grid();
+}
+
+void set_length(u8 length) {
+    config.length = length;
+    updateLength(config.length);
+}
+
+void set_algoX(u8 algoX) {
+    config.algoX = algoX;
+    updateAlgoX(config.algoX);
+}
+
+void set_algoY(u8 algoY) {
+    config.algoY = algoY;
+    updateAlgoY(config.algoY);
+}
+
+void set_shift(u8 shift) {
+    config.shift = shift;
+    updateShift(config.shift);
+}
+
+void set_space(u8 space) {
+    config.space = space;
+    updateSpace(config.space);
+}
+
+
+
+// ----------------------------------------------------------------------------
+// controller
 
 void update_display() {
     clear_screen();
@@ -335,37 +454,68 @@ void process_gate(u8 index, u8 on) {
     switch (index) {
         case 0:
             reset();
-            refresh_grid();
             break;
-            
         case 1:
-            setCurrentScale(getCurrentScale() ? 0 : 1);
-            refresh_grid();
+            toggle_scale(1);
             break;
-            
         case 2:
-            scaleAOctave = !scaleAOctave;
-            refresh_grid();
+            toggle_scaleA_octave();
             break;
-            
         case 3:
-            scaleBOctave = !scaleBOctave;
-            refresh_grid();
+            toggle_scaleB_octave();
             break;
-            
         default:
             break;
     }
 }
 
 void process_grid_press(u8 x, u8 y, u8 on) {
-    if (x == 0 && y == 0) {
-        if (on) page = page == PAGE_MAIN ? PAGE_MATRIX : PAGE_MAIN;
-        refresh_grid();
+    if (y == 0) {
+        if (!on) return;
+        switch (x) {
+            case 0:
+                select_matrix(0);
+                break;
+            case 1:
+                select_matrix(1);
+                break;
+            case 6:
+                select_param(PARAM_LEN);
+                break;
+            case 7:
+                select_param(PARAM_ALGOX);
+                break;
+            case 8:
+                select_param(PARAM_ALGOY);
+                break;
+            case 9:
+                select_param(PARAM_SHIFT);
+                break;
+            case 10:
+                select_param(PARAM_SPACE);
+                break;
+            case 11:
+                select_param(PARAM_GATEL);
+                break;
+            case 13:
+                select_param(PARAM_TRANS);
+                break;
+            default:
+                break;
+        }
         return;
     }
     
-    if (page == PAGE_MAIN) process_grid_main(x, y, on);
+    if (y == 1 && x == 0 && on) {
+        toggle_matrix_mute(0);
+        return;
+    }
+    if (y == 1 && x == 1 && on) {
+        toggle_matrix_mute(1);
+        return;
+    }
+
+    if (page == PAGE_PARAM) process_grid_param(x, y, on);
     else if (page == PAGE_MATRIX) process_grid_matrix(x, y, on);
 }
     
@@ -373,86 +523,87 @@ void render_grid() {
     if (!is_grid_connected()) return;
     
     clear_all_grid_leds();
-    if (page == PAGE_MAIN) render_main_page();
+    
+    u8 on = 15, off = 7;
+    set_grid_led(0, 0, page == PAGE_MATRIX && mi == 0 ? on : off);
+    set_grid_led(1, 0, page == PAGE_MATRIX && mi == 1 ? on : off);
+    set_grid_led(0, 1, matrix_on[0] ? off : off - 4);
+    set_grid_led(1, 1, matrix_on[1] ? off : off - 4);
+    set_grid_led(6, 0, page == PAGE_PARAM && param == PARAM_LEN ? on : off);
+    set_grid_led(7, 0, page == PAGE_PARAM && param == PARAM_ALGOX ? on : off);
+    set_grid_led(8, 0, page == PAGE_PARAM && param == PARAM_ALGOY ? on : off);
+    set_grid_led(9, 0, page == PAGE_PARAM && param == PARAM_SHIFT ? on : off);
+    set_grid_led(10, 0, page == PAGE_PARAM && param == PARAM_SPACE ? on : off);
+    set_grid_led(11, 0, page == PAGE_PARAM && param == PARAM_GATEL ? on : off);
+    set_grid_led(13, 0, page == PAGE_PARAM && param == PARAM_TRANS ? on : off);
+    
+    if (page == PAGE_PARAM) render_param_page();
     else if (page == PAGE_MATRIX) render_matrix_page();
 }
 
-void process_grid_main(u8 x, u8 y, u8 on) {
+void process_grid_param(u8 x, u8 y, u8 on) {
     if (!on) return;
     
-    if (x == 0 && y == 6) setCurrentScale(0);
-    else if (x == 0 && y == 7) setCurrentScale(1);
-    else if (x == 15 && y == 6) scaleAOctave = !scaleAOctave;
-    else if (x == 15 && y == 7) scaleBOctave = !scaleBOctave;
-    else if (y > 5 && y < 8 && x > 1 && x < 14) {
-        scaleButtons[y - 6][x - 2] = !scaleButtons[y - 6][x - 2];
-        updateScales(scaleButtons);
-    }
-    else if (x == 0 && y == 1) param = PARAM_LEN;
-    else if (x == 1 && y == 0) param = PARAM_ALGOX;
-    else if (x == 1 && y == 1) param = PARAM_ALGOY;
-    else if (x == 14 && y == 0) param = PARAM_SHIFT;
-    else if (x == 14 && y == 1) param = PARAM_SPACE;
-    else if (x == 15 && y == 0) param = PARAM_TRANS;
-    else if (x == 15 && y == 1) param = PARAM_GATEL;
-    else if (y > 2 && y < 5) {
-        switch (param) {
+    if (x == 0 && y == 6)
+        setCurrentScale(0);
+    
+    else if (x == 0 && y == 7)
+        setCurrentScale(1);
+    
+    else if (x == 15 && y == 6)
+        toggle_scaleA_octave();
+    
+    else if (x == 15 && y == 7)
+        toggle_scaleB_octave();
+    
+    else if (y > 5 && y < 8 && x > 1 && x < 14)
+        toggle_scale_note(y - 6, x - 2);
+    
+    if (y < 3 || y > 4) return;
+    
+    switch (param) {
 
-            case PARAM_LEN:
-                config.length = (y - 3) * 16 + x + 1;
-                updateLength(config.length);
-                break;
-            
-            case PARAM_ALGOX:
-                if (y == 3 && x > 3 && x < 12) {
-                    config.algoX = ((x - 4) << 4) + (config.algoX & 15);
-                    updateAlgoX(config.algoX);
-                } else if (y == 4) {
-                    config.algoX = (config.algoX & 0b1110000) + x;
-                    updateAlgoX(config.algoX);
-                }
-                break;
-            
-            case PARAM_ALGOY:
-                if (y == 3 && x > 3 && x < 12) {
-                    config.algoY = (x - 4) * 16 + (config.algoY & 15);
-                    updateAlgoY(config.algoY);
-                } else if (y == 4) {
-                    config.algoY = (config.algoY & 0b1110000) + x;
-                    updateAlgoY(config.algoY);
-                }
-                break;
-            
-            case PARAM_SHIFT:
-                if (y == 3 && x > 1 && x < 15) {
-                    config.shift = x - 2;
-                    updateShift(config.shift);
-                }
-                break;
-            
-            case PARAM_SPACE:
-                if (y == 3) {
-                    config.space = x;
-                    updateSpace(config.space);
-                }
-                break;
-            
-            case PARAM_TRANS:
-                break;
-            
-            case PARAM_GATEL:
-                break;
-            
-            default:
-                break;
-        }
+        case PARAM_LEN:
+            set_length(((y - 3) << 4) + x + 1);
+            break;
+        
+        case PARAM_ALGOX:
+            if (y == 3 && x > 3 && x < 12)
+                set_algoX (((x - 4) << 4) + (config.algoX & 15));
+            else if (y == 4)
+                set_algoX((config.algoX & 0b1110000) + x);
+            break;
+        
+        case PARAM_ALGOY:
+            if (y == 3 && x > 3 && x < 12)
+                set_algoY (((x - 4) << 4) + (config.algoX & 15));
+            else if (y == 4)
+                set_algoY((config.algoX & 0b1110000) + x);
+            break;
+        
+        case PARAM_SHIFT:
+            if (y == 3 && x > 1 && x < 15) set_shift(x - 2);
+            break;
+        
+        case PARAM_SPACE:
+            if (y == 3) set_space(x);
+            break;
+        
+        case PARAM_TRANS:
+            break;
+        
+        case PARAM_GATEL:
+            break;
+        
+        default:
+            break;
     }
     
     refresh_grid();
 }
 
-void render_main_page() {
-    u8 on = 15, prm = 8, off = 3, y, l;
+void render_param_page() {
+    u8 on = 15, off = 3, y, l;
     
     set_grid_led(0, 6, off);
     set_grid_led(0, 7, off);
@@ -461,27 +612,14 @@ void render_main_page() {
     set_grid_led(15, 6, scaleAOctave ? on : off);
     set_grid_led(15, 7, scaleBOctave ? on : off);
 
-    set_grid_led(15, 0, getScaleCount(0) > 1 ? 15 : 8);
-    set_grid_led(15, 1, getScaleCount(1) > 1 ? 15 : 8);
-    
     for (u8 i = 0; i < SCALECOUNT; i++) {
         y = 8 - SCALECOUNT + i;
         for (u8 j = 0; j < SCALELEN; j++) set_grid_led(2 + j, y, scaleButtons[i][j] ? on : off);
     }
     
-    set_grid_led(0, 0, prm);
-    set_grid_led(0, 1, prm);
-    set_grid_led(1, 0, prm);
-    set_grid_led(1, 1, prm);
-    set_grid_led(14, 0, prm);
-    set_grid_led(15, 0, prm);
-    set_grid_led(14, 1, prm);
-    set_grid_led(15, 1, prm);
-    
     switch (param) {
         
         case PARAM_LEN:
-            set_grid_led(0, 1, on);
             for (u8 x = 0; x < 16; x++) for (u8 y = 3; y < 5; y++) set_grid_led(x, y, off);
             y = 3;
             l = config.length;
@@ -494,7 +632,6 @@ void render_main_page() {
             break;
         
         case PARAM_ALGOX:
-            set_grid_led(1, 0, on);
             l = (config.algoX >> 4);
             for (u8 i = 0; i < 8; i++) set_grid_led(i + 4, 3, i == l ? on : off);
             l = (config.algoX & 15);
@@ -502,7 +639,6 @@ void render_main_page() {
             break;
         
         case PARAM_ALGOY:
-            set_grid_led(1, 1, on);
             l = config.algoY >> 4;
             for (u8 i = 0; i < 8; i++) set_grid_led(i + 4, 3, i == l ? on : off);
             l = (config.algoY & 15);
@@ -510,21 +646,17 @@ void render_main_page() {
             break;
         
         case PARAM_SHIFT:
-            set_grid_led(14, 0, on);
             for (u8 x = 0; x < 13; x++) set_grid_led(x + 2, 3, x == config.shift ? on : (x == getShift() ? off + 3 : off));
             break;
         
         case PARAM_SPACE:
-            set_grid_led(14, 1, on);
             for (u8 x = 0; x < 16; x++) set_grid_led(x, 3, x == config.space ? on : off);
             break;
         
         case PARAM_TRANS:
-            set_grid_led(15, 0, on);
             break;
         
         case PARAM_GATEL:
-            set_grid_led(15, 1, on);
             break;
         
         default:
@@ -535,71 +667,46 @@ void render_main_page() {
 void process_grid_matrix(u8 x, u8 y, u8 on) {
     if (!on) return;
     
-    if (x == 0 && y > 2 && y < 5) {
-        mi = y - 3;
-        refresh_grid();
+    if (x == 0 && y == 7) {
+        clear_current_matrix();
         return;
     }
-    
-    if (y > 2 && y < 5 && x == 1) {
-        matrix_on[y - 3] = !matrix_on[y - 3];
-        refresh_grid();
-    }
-    
-    if (y > 2 && y < 5 && x == 2) {
-        matrix_inv[y - 3] = !matrix_inv[y - 3];
-        refresh_grid();
+
+    if (x == 1 && y == 7) {
+        randomize_current_matrix();
+        return;
     }
 
-    if (x == 2 && y == 0) {
-        for (int i = 0; i < MATRIXINS; i++)
-            for (int o = 0; o < MATRIXOUTS; o++)
-                matrix[mi][i][o] = 0;
-        refresh_grid();
-    }
-
-    if (x == 2 && y == 1) {
-        for (int i = 0; i < MATRIXINS; i++)
-            for (int o = 0; o < MATRIXOUTS; o++)
-                matrix[mi][i][o] = rand() & 1;
-        refresh_grid();
-    }
-
-    if (x < 4) return;
+    if (x == 4) x = 0;
+    else if (x > 5 && x < 12) x -= 5;
+    else if (x > 12) x -= 6;
+    else return;
     
-    x -= 4;
-    matrix[mi][y][x] = (matrix[mi][y][x] + 1) % (MATRIXMAXSTATE + 1);
-    update_matrix();
-    refresh_grid();
+    toggle_matrix_cell(y - 1, x);
 }
 
 void render_matrix_page() {
-    u8 on = 15, off = 3;
-
-    set_grid_led(0, 0, on);
+    set_grid_led(0, 7, 10);
+    set_grid_led(1, 7, 10);
     
-    set_grid_led(2, 0, on);
-    set_grid_led(2, 1, on);
-    
-    set_grid_led(0, 3, mi ? off : on);
-    set_grid_led(0, 4, mi ? on : off);
-    
-    set_grid_led(1, 3, matrix_on[0] ? on : off);
-    set_grid_led(1, 4, matrix_on[1] ? on : off);
-
-    set_grid_led(2, 3, matrix_inv[0] ? on : off);
-    set_grid_led(2, 4, matrix_inv[1] ? on : off);
-
     u8 d = 12 / (MATRIXMAXSTATE + 1);
-    if (matrix_inv[mi]) d -= 2;
-    u8 a = matrix_on[mi] ? 4 : 1;
+    u8 a = matrix_on[mi] ? 4 : 2;
     
     for (u8 x = 0; x < MATRIXOUTS; x++)
-        for (u8 y = 0; y < MATRIXINS; y++)
-            set_grid_led(x + 4, y, matrix[mi][y][x] * d + a);
+        for (u8 y = 0; y < MATRIXINS; y++) {
+            u8 _x;
+            if (x == 0) _x = 4;
+            else if (x < 7) _x = x + 5;
+            else _x = x + 6;
+            set_grid_led(_x, y + 1, matrix[mi][y][x] * d + a);
+        }
 }
 
 void render_arc() { }
+
+
+// ----------------------------------------------------------------------------
+// helper functions
 
 // http://www.jb.man.ac.uk/~slowe/cpp/itoa.html
 // http://embeddedgurus.com/stack-overflow/2009/06/division-of-integers-by-constants/
@@ -654,17 +761,22 @@ switch outputs notes/mod cvs
 clock input
 clock / reset outputs
 visualize value changes from matrix
-visualize values
+visualize values for algox/algoy
 way to mute voices
 toggle between directly mapped voices / first available
 MIDI keyboard support
-
-    clear matrix
-    randomize matrix
-    mute matrix
 mute scales
-    invert matrix
-
 speed for ansible
-    additional gate inputs on ansible/teletype
+transfer matrix stuff to engine?
+    
+--
+    
+space should just mute a note instead of not producing a gate (or tweak it)
+    weight modulations by the number of mod sources
+    turn off scale switching from mod if the scale to switch to is empty
+    
+-- not tested:
+
+- additional gate inputs on ansible/teletype
+    
 */
