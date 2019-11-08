@@ -45,7 +45,6 @@ typedef struct {
     uint8_t notes[NOTECOUNT];
     uint8_t gateOn[NOTECOUNT];
     uint8_t gateChanged[NOTECOUNT];
-    uint8_t volume[NOTECOUNT];
     
     uint16_t modCvs[MODCOUNT];
     uint8_t modGateOn[MODCOUNT];
@@ -56,9 +55,11 @@ typedef struct {
 void initEngine(engine_config_t *config);
 void updateScales(uint8_t scales[SCALECOUNT][SCALELEN]);
 
+uint8_t getLength(void);
 uint8_t getAlgoX(void);
 uint8_t getAlgoY(void);
 uint8_t getShift(void);
+uint8_t getSpace(void);
 
 void updateLength(uint8_t length);
 void updateAlgoX(uint8_t algoX);
@@ -75,7 +76,6 @@ uint8_t getScaleCount(uint8_t scale);
 
 uint8_t getNote(uint8_t index);
 uint8_t getGate(uint8_t index);
-uint8_t getVolume(uint8_t index);
 uint8_t getGateChanged(uint8_t index);
 uint16_t getModCV(uint8_t index);
 uint8_t getModGate(uint8_t index);

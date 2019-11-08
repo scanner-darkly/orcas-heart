@@ -80,6 +80,10 @@ void updateScales(uint8_t scales[SCALECOUNT][SCALELEN]) {
     }
 }
 
+uint8_t getLength() {
+    return engine.config.length;
+}
+
 uint8_t getAlgoX(void) {
     return engine.config.algoX;
 }
@@ -90,6 +94,10 @@ uint8_t getAlgoY(void) {
 
 uint8_t getShift() {
     return engine.config.shift;
+}
+
+uint8_t getSpace() {
+    return engine.config.space;
 }
 
 void updateLength(uint8_t length) {
@@ -148,10 +156,6 @@ uint8_t getNote(uint8_t index) {
 
 uint8_t getGate(uint8_t index) {
     return engine.gateOn[index];
-}
-
-uint8_t getVolume(uint8_t index) {
-    return engine.volume[index];
 }
 
 uint8_t getGateChanged(uint8_t index) {
@@ -259,7 +263,7 @@ void calculateNextNote(int n) {
     
     u8 space = spacePresets[(engine.config.space | n) % SPACEPRESETCOUNT];
     space |= space << 4;
-    engine.volume[n] = spacePresets[(engine.config.space | n) % SPACEPRESETCOUNT] & engine.spaceCounter ? 1 : 0;
+    if (spacePresets[(engine.config.space | n) % SPACEPRESETCOUNT] & engine.spaceCounter) gate = 0;
    
     if (!engine.scaleCount[engine.scale]) gate = 0;
    
