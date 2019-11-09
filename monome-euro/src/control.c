@@ -21,6 +21,7 @@
 
 #define PARAMTIMER 0
 #define CLOCKTIMER 1
+#define GATETIMER 2
 
 #define PAGE_PARAM   0
 #define PAGE_MATRIX 1
@@ -38,6 +39,8 @@
 #define MATRIXCOUNT 2
 #define MATRIXMAXSTATE 1
 #define MATRIXGATEWEIGHT 60
+#define MATRIXMODEEDIT 0
+#define MATRIXMODEPERF 1
 
 // presets and data stored in presets
 
@@ -47,9 +50,12 @@ preset_data_t preset;
 u8 selected_preset;
 
 engine_config_t config;
-u16 speed, gateLength, transpose;
+u16 speed, gate_length;
+s8 transpose;
+
 u8 matrix[MATRIXCOUNT][MATRIXINS][MATRIXOUTS];
 u8 matrix_on[MATRIXCOUNT];
+u8 matrix_mode;
 
 u8 page;
 u8 param;
@@ -57,10 +63,10 @@ u8 mi;
 
 // UI and local vars
 
-u8 scaleButtons[SCALECOUNT][SCALELEN] = {};
-u8 scaleAOctave, scaleBOctave;
+u8 scale_buttons[SCALECOUNT][SCALELEN] = {};
+u8 scaleA_octave, scaleB_octave;
 
-u32 speedMod;
+u32 speed_mod, gate_length_mod;
 s32 matrix_values[MATRIXOUTS];
 
 // prototypes
@@ -71,6 +77,7 @@ static void update_parameters(void);
 static void update_matrix(void);
 
 static void output_notes(void);
+static void stop_note(u8 n);
 static void output_mods(void);
 
 static void toggle_scale(u8 manual);
@@ -78,16 +85,20 @@ static void toggle_scaleA_octave(void);
 static void toggle_scaleB_octave(void);
 void toggle_scale_note(u8 scale, u8 note);
 
-void set_length(u8 length);
-void set_algoX(u8 algoX);
-void set_algoY(u8 algoY);
-void set_shift(u8 shift);
-void set_space(u8 space);
+static void set_length(u8 length);
+static void set_algoX(u8 algoX);
+static void set_algoY(u8 algoY);
+static void set_shift(u8 shift);
+static void set_space(u8 space);
+
+static void set_gate_length(u16 len);
+static void set_transpose(s8 trans);
 
 static void select_page(u8 p);
 static void select_param(u8 p);
 static void select_matrix(u8 m);
 static void toggle_matrix_mute(u8 m);
+static void toggle_matrix_mode(void);
 static void clear_current_matrix(void);
 static void randomize_current_matrix(void);
 static void toggle_matrix_cell(u8 in, u8 out);
@@ -141,11 +152,11 @@ void init_control(void) {
     initEngine(&config);
     
     speed = 400;
-    gateLength = 1;
+    gate_length = 1000;
     transpose = 0;
     
     // TODO update scale buttons from preset
-    updateScales(scaleButtons);
+    updateScales(scale_buttons);
     
     // TODO load matrix from preset
     for (u8 i = 0; i < MATRIXCOUNT; i++) matrix_on[i] = 1;
@@ -154,8 +165,12 @@ void init_control(void) {
     page = PAGE_PARAM;
     param = PARAM_LEN;
     mi = 0;
+    matrix_mode = MATRIXMODEEDIT;
     
     // set up any other initial values and timers
+    
+    speed_mod = gate_length_mod = 0;
+    
     set_as_i2c_leader();
     set_jf_mode(1);
     for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_JF, i, 1);
@@ -204,8 +219,12 @@ void process_event(u8 event, u8 *data, u8 length) {
             break;
             
         case TIMED_EVENT:
-            if (data[0] == PARAMTIMER) update_parameters();
-            else if (data[0] == CLOCKTIMER) step();
+            if (data[0] == PARAMTIMER)
+                update_parameters();
+            else if (data[0] == CLOCKTIMER)
+                step();
+            else if (data[0] >= GATETIMER)
+                stop_note(data[0] - GATETIMER);
             break;
         
         case MIDI_CONNECTED:
@@ -247,7 +266,7 @@ void step() {
 }
 
 void update_parameters() {
-    u32 sp = ((get_knob_value(0) * 1980) >> 16) + 20 + speedMod;
+    u32 sp = ((get_knob_value(0) * 1980) >> 16) + 20 + speed_mod;
     if (sp > 2000) sp = 2000; else if (sp < 20) sp = 20;
     u32 newSpeed = 60000 / sp;
     
@@ -259,11 +278,10 @@ void update_parameters() {
 }
 
 void output_notes(void) {
-    // TODO implement transpose
-    u8 trans = 24;
+    u8 trans = 24 + transpose;
     u8 scale = getCurrentScale();
-    if (!scale && scaleAOctave) trans += 12;
-    else if (scale && scaleBOctave) trans += 12;
+    if (!scale && scaleA_octave) trans += 12;
+    else if (scale && scaleB_octave) trans += 12;
 
     u8 prev_notes[NOTECOUNT];
     u8 found;
@@ -276,10 +294,15 @@ void output_notes(void) {
                 found = 1;
                 break;
             }
-        // TODO implement gate length
-        if (getGateChanged(n) && !found)
+        if (getGateChanged(n) && !found) {
             note(n, getNote(n) + trans, getModCV(0) * 100 + 6000, getGate(n));
+            add_timed_event(GATETIMER + n, gate_length_mod, 0);
+        }
     }
+}
+
+void stop_note(u8 n) {
+    note(n, 0, 0, 0);
 }
 
 void output_mods(void) {
@@ -320,7 +343,7 @@ void update_matrix(void) {
     u32 v;
     // value * (max - min) / 120 + param
 
-    speedMod = counts[0] ? (matrix_values[0] * 198) / (12 * MATRIXMAXSTATE * counts[0]) : 0;
+    speed_mod = counts[0] ? (matrix_values[0] * 198) / (12 * MATRIXMAXSTATE * counts[0]) : 0;
     
     v = config.length;
     if (counts[1]) {
@@ -357,6 +380,10 @@ void update_matrix(void) {
     }
     updateSpace(v);
     
+    gate_length_mod = counts[6] ? (matrix_values[6] * 390) / (12 * MATRIXMAXSTATE * counts[6]) : 0;
+    gate_length_mod += gate_length;
+    if (gate_length_mod < 100) gate_length_mod = 100; else if (gate_length_mod > 4000) gate_length_mod = 4000;    
+    
     if (matrix_values[7] > prevScale && matrix_values[7]/12 > 5) toggle_scale(0);
     
     if (matrix_values[8] > prevOctaveA && matrix_values[8]/12 > 5) toggle_scaleA_octave();
@@ -374,18 +401,18 @@ void toggle_scale(u8 manual) {
 }
 
 void toggle_scaleA_octave() {
-    scaleAOctave = !scaleAOctave;
+    scaleA_octave = !scaleA_octave;
     if (page == PAGE_PARAM) refresh_grid();
 }
 
 void toggle_scaleB_octave() {
-    scaleBOctave = !scaleBOctave;
+    scaleB_octave = !scaleB_octave;
     if (page == PAGE_PARAM) refresh_grid();
 }
 
 void toggle_scale_note(u8 scale, u8 note) {
-    scaleButtons[scale][note] = !scaleButtons[scale][note];
-    updateScales(scaleButtons);
+    scale_buttons[scale][note] = !scale_buttons[scale][note];
+    updateScales(scale_buttons);
     if (page == PAGE_PARAM) refresh_grid();
 }
 
@@ -407,6 +434,11 @@ void select_matrix(u8 m) {
 void toggle_matrix_mute(u8 m) {
     matrix_on[m] = !matrix_on[m];
     refresh_grid();
+}
+
+void toggle_matrix_mode() {
+    matrix_mode = matrix_mode == MATRIXMODEEDIT ? MATRIXMODEPERF : MATRIXMODEEDIT;
+    if (page == PAGE_MATRIX) refresh_grid();
 }
 
 void clear_current_matrix() {
@@ -459,6 +491,15 @@ void set_space(u8 space) {
     if (page == PAGE_PARAM && param == PARAM_SPACE) refresh_grid();
 }
 
+void set_gate_length(u16 len) {
+    gate_length = len;
+    if (page == PAGE_PARAM && param == PARAM_GATEL) refresh_grid();
+}
+
+void set_transpose(s8 trans) {
+    transpose = trans;
+    if (page == PAGE_PARAM && param == PARAM_TRANS) refresh_grid();
+}
 
 
 // ----------------------------------------------------------------------------
@@ -623,10 +664,15 @@ void process_grid_param(u8 x, u8 y, u8 on) {
             if (y == 3) set_space(x);
             break;
         
-        case PARAM_TRANS:
+        case PARAM_GATEL:
+            set_gate_length((((y - 3) << 4) + x) * 129);
             break;
         
-        case PARAM_GATEL:
+        case PARAM_TRANS:
+            if (y == 3)
+                set_transpose(x - 15);
+            else if (y == 4)
+                set_transpose(x);
             break;
         
         default:
@@ -643,12 +689,12 @@ void render_param_page() {
     set_grid_led(0, 7, off);
     set_grid_led(0, getCurrentScale() ? 7 : 6, on);
     
-    set_grid_led(15, 6, scaleAOctave ? on : off);
-    set_grid_led(15, 7, scaleBOctave ? on : off);
+    set_grid_led(15, 6, scaleA_octave ? on : off);
+    set_grid_led(15, 7, scaleB_octave ? on : off);
 
     for (u8 i = 0; i < SCALECOUNT; i++) {
         y = 8 - SCALECOUNT + i;
-        for (u8 j = 0; j < SCALELEN; j++) set_grid_led(2 + j, y, scaleButtons[i][j] ? on : off);
+        for (u8 j = 0; j < SCALELEN; j++) set_grid_led(2 + j, y, scale_buttons[i][j] ? on : off);
     }
     
     switch (param) {
@@ -693,10 +739,31 @@ void render_param_page() {
             for (u8 x = 0; x < 16; x++) set_grid_led(x, 3, x == config.space ? on : (x == getSpace() ? mod : off));
             break;
         
-        case PARAM_TRANS:
-            break;
-        
         case PARAM_GATEL:
+            for (u8 x = 0; x < 16; x++) for (u8 y = 3; y < 5; y++) set_grid_led(x, y, off);
+            
+            y = y2 = 3;
+            p1 = gate_length / 129;
+            if (p1 > 16) { y = 4; p1 -= 16; }
+            p2 = gate_length_mod / 129;
+            if (p2 > 16) { y2 = 4; p2 -= 16; }
+            set_grid_led(p2, y2, mod);
+            set_grid_led(p1, y, on);
+            break;
+
+        case PARAM_TRANS:
+            for (u8 y = 3; y < 5; y++)
+                for (u8 x = 0; x < 16; x++)
+                    set_grid_led(x, y, off);
+                
+            set_grid_led(15, 3, transpose ? mod : on);
+            set_grid_led(0, 4, transpose ? mod : on);
+            
+            if (transpose < 0)
+                set_grid_led(15 + transpose, 3, on);
+            else if (transpose)
+                set_grid_led(transpose, 3, on);
+        
             break;
         
         default:
@@ -705,15 +772,18 @@ void render_param_page() {
 }
 
 void process_grid_matrix(u8 x, u8 y, u8 on) {
-    if (!on) return;
-    
-    if (x == 0 && y == 7) {
+    if (x == 0 && y == 7 && on) {
         clear_current_matrix();
         return;
     }
 
-    if (x == 1 && y == 7) {
+    if (x == 1 && y == 7 && on) {
         randomize_current_matrix();
+        return;
+    }
+    
+    if (x == 0 && y == 4 && on) {
+        toggle_matrix_mode();
         return;
     }
 
@@ -722,12 +792,13 @@ void process_grid_matrix(u8 x, u8 y, u8 on) {
     else if (x > 12) x -= 6;
     else return;
     
-    toggle_matrix_cell(y - 1, x);
+    if (matrix_mode == MATRIXMODEPERF || on) toggle_matrix_cell(y - 1, x);
 }
 
 void render_matrix_page() {
     set_grid_led(0, 7, 10);
     set_grid_led(1, 7, 10);
+    set_grid_led(0, 4, matrix_mode == MATRIXMODEEDIT ? 10 : 4);
     
     u8 d = 12 / (MATRIXMAXSTATE + 1);
     u8 a = matrix_on[mi] ? 3 : 2;
@@ -793,10 +864,6 @@ char* itoa(int value, char* result, int base) {
 }
 
 /*
-transpose
-momentary matrix editing
-
-gate length
 presets
 i2c config
 switch outputs between notes/mod cvs
@@ -804,14 +871,18 @@ clock input
 clock / reset outputs
 visualize values for algox/algoy
 way to mute voices
-toggle between directly mapped voices / first available
-MIDI keyboard support
 speed for ansible
+
+MIDI keyboard support
+toggle between directly mapped voices / first available
 transfer matrix stuff to engine?
     
 -- not tested:
 
 - additional gate inputs on ansible/teletype
 - visualize value changes from matrix
+- momentary matrix editing
+- transpose
+- gate length
   
 */
