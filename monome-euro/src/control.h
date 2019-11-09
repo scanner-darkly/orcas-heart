@@ -9,23 +9,41 @@
 
 #pragma once
 #include "types.h"
+#include "engine.h"
 
 
 // ----------------------------------------------------------------------------
 // firmware dependent stuff starts here
 
+#define MATRIXOUTS 10
+#define MATRIXINS   7
+#define MATRIXCOUNT 2
 
 
 // ----------------------------------------------------------------------------
 // shared types
 
 typedef struct {
-} preset_meta_t;
-
-typedef struct {
+    u8 page;
+    u8 param;
+    u8 mi;
 } shared_data_t;
 
 typedef struct {
+} preset_meta_t;
+
+typedef struct {
+    engine_config_t config;
+    u16 speed;
+    u16 gate_length;
+    s8 transpose;
+
+    u8 scale_buttons[SCALECOUNT][SCALELEN];
+    u8 scaleA_octave, scaleB_octave;
+
+    u8 matrix[MATRIXCOUNT][MATRIXINS][MATRIXOUTS];
+    u8 matrix_on[MATRIXCOUNT];
+    u8 matrix_mode;
 } preset_data_t;
 
 

@@ -34,9 +34,6 @@
 #define PARAM_TRANS 5
 #define PARAM_GATEL 6
 
-#define MATRIXOUTS 10
-#define MATRIXINS   7
-#define MATRIXCOUNT 2
 #define MATRIXMAXSTATE 1
 #define MATRIXGATEWEIGHT 60
 #define MATRIXMODEEDIT 0
@@ -44,32 +41,20 @@
 
 // presets and data stored in presets
 
-shared_data_t shared;
+shared_data_t s;
 preset_meta_t meta;
-preset_data_t preset;
+preset_data_t p;
 u8 selected_preset;
 
-engine_config_t config;
-u16 speed, gate_length;
-s8 transpose;
-
-u8 matrix[MATRIXCOUNT][MATRIXINS][MATRIXOUTS];
-u8 matrix_on[MATRIXCOUNT];
-u8 matrix_mode;
-
-u8 page;
-u8 param;
-u8 mi;
-
-// UI and local vars
-
-u8 scale_buttons[SCALECOUNT][SCALELEN] = {};
-u8 scaleA_octave, scaleB_octave;
+// local vars
 
 u32 speed_mod, gate_length_mod;
 s32 matrix_values[MATRIXOUTS];
 
 // prototypes
+
+static void load_preset(u8 preset);
+static void save_preset(void);
 
 static void step(void);
 
@@ -126,11 +111,38 @@ void init_presets(void) {
     // initialize preset with default values 
     // store them to flash
     
-    for (u8 i = 0; i < get_preset_count(); i++) {
-        store_preset_to_flash(i, &meta, &preset);
+    s.page = PAGE_PARAM;
+    s.param = PARAM_LEN;
+    s.mi = 0;
+    store_shared_data_to_flash(&s);
+    
+    p.config.length = 8;
+    p.config.algoX = 0;
+    p.config.algoY = 0;
+    p.config.shift = 0;
+    p.config.space = 0;
+    p.speed = 400;
+    p.gate_length = 1000;
+    p.transpose = 0;
+    
+    for (u8 s = 0; s < SCALECOUNT; s++)
+        for (u8 i = 0; i < SCALELEN; i++)
+            p.scale_buttons[s][i] = 0;
+        
+    p.scaleA_octave = 0;
+    p.scaleB_octave = 0;
+    
+    for (u8 i = 0; i < MATRIXCOUNT; i++) {
+        p.matrix_on[i] = 1;
+        for (u8 j = 0; j < MATRIXINS; j++)
+            for (u8 k = 0; k < MATRIXOUTS; k++)
+                p.matrix[i][j][k] = 0;
     }
+    p.matrix_mode = MATRIXMODEEDIT;
 
-    store_shared_data_to_flash(&shared);
+    for (u8 i = 0; i < get_preset_count(); i++)
+        store_preset_to_flash(i, &meta, &p);
+
     store_preset_index(0);
 }
 
@@ -138,47 +150,19 @@ void init_control(void) {
     // load shared data
     // load current preset and its meta data
     
-    load_shared_data_from_flash(&shared);
-    selected_preset = get_preset_index();
-    load_preset_from_flash(selected_preset, &preset);
-    load_preset_meta_from_flash(selected_preset, &meta);
+    add_timed_event(CLOCKTIMER, 100, 1);
 
-    // TODO read values from preset
-    config.length = 8;
-    config.algoX = 12;
-    config.algoY = 12;
-    config.shift = 0;
-    config.space = 0;
-    initEngine(&config);
-    
-    speed = 400;
-    gate_length = 1000;
-    transpose = 0;
-    
-    // TODO update scale buttons from preset
-    updateScales(scale_buttons);
-    
-    // TODO load matrix from preset
-    for (u8 i = 0; i < MATRIXCOUNT; i++) matrix_on[i] = 1;
-    
-    // TODO load page / param from preset
-    page = PAGE_PARAM;
-    param = PARAM_LEN;
-    mi = 0;
-    matrix_mode = MATRIXMODEEDIT;
+    load_shared_data_from_flash(&s);
+    load_preset(get_preset_index());
     
     // set up any other initial values and timers
     
     speed_mod = gate_length_mod = 0;
+    add_timed_event(PARAMTIMER, PARAMCYCLE, 1);
     
     set_as_i2c_leader();
     set_jf_mode(1);
     for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_JF, i, 1);
-    
-    refresh_grid();
-
-    add_timed_event(PARAMTIMER, PARAMCYCLE, 1);
-    add_timed_event(CLOCKTIMER, 100, 1);
 }
 
 void process_event(u8 event, u8 *data, u8 length) {
@@ -257,6 +241,23 @@ void process_event(u8 event, u8 *data, u8 length) {
 // ----------------------------------------------------------------------------
 // actions
 
+void save_preset() {
+    store_preset_to_flash(selected_preset, &meta, &p);
+    store_shared_data_to_flash(&s);
+    store_preset_index(0);
+}
+
+void load_preset(u8 preset) {
+    selected_preset = preset;
+    load_preset_from_flash(selected_preset, &p);
+
+    initEngine(&p.config);
+    update_timer_interval(CLOCKTIMER, p.speed);
+    updateScales(p.scale_buttons);
+
+    refresh_grid();
+}
+
 void step() {
     clock();
     output_notes();
@@ -270,18 +271,18 @@ void update_parameters() {
     if (sp > 2000) sp = 2000; else if (sp < 20) sp = 20;
     u32 newSpeed = 60000 / sp;
     
-    if (newSpeed != speed) {
-        speed = newSpeed;
-        update_timer_interval(CLOCKTIMER, speed);
+    if (newSpeed != p.speed) {
+        p.speed = newSpeed;
+        update_timer_interval(CLOCKTIMER, p.speed);
         update_display();
     }
 }
 
 void output_notes(void) {
-    u8 trans = 24 + transpose;
+    u8 trans = 24 + p.transpose;
     u8 scale = getCurrentScale();
-    if (!scale && scaleA_octave) trans += 12;
-    else if (scale && scaleB_octave) trans += 12;
+    if (!scale && p.scaleA_octave) trans += 12;
+    else if (scale && p.scaleB_octave) trans += 12;
 
     u8 prev_notes[NOTECOUNT];
     u8 found;
@@ -320,21 +321,21 @@ void update_matrix(void) {
         counts[m] = 0;
         for (u8 i = 0; i < 4; i++) {
             
-            if (matrix_on[0]) {
-                counts[m] += matrix[0][i][m];
-                matrix_values[m] += getNote(i) * matrix[0][i][m];
+            if (p.matrix_on[0]) {
+                counts[m] += p.matrix[0][i][m];
+                matrix_values[m] += getNote(i) * p.matrix[0][i][m];
                 if (i < 3) {
-                    counts[m] += matrix[0][i + 4][m];
-                    matrix_values[m] += getGate(i) * matrix[0][i + 4][m] * MATRIXGATEWEIGHT;
+                    counts[m] += p.matrix[0][i + 4][m];
+                    matrix_values[m] += getGate(i) * p.matrix[0][i + 4][m] * MATRIXGATEWEIGHT;
                 }
             }
             
-            if (matrix_on[1]) {
-                counts[m] += matrix[1][i][m];
-                matrix_values[m] += getModCV(i) * matrix[1][i][m] * 12;
+            if (p.matrix_on[1]) {
+                counts[m] += p.matrix[1][i][m];
+                matrix_values[m] += getModCV(i) * p.matrix[1][i][m] * 12;
                 if (i < 3) {
-                    matrix_values[m] += getModGate(i) * matrix[1][i + 4][m] * MATRIXGATEWEIGHT;
-                    counts[m] += matrix[1][i + 4][m];
+                    matrix_values[m] += getModGate(i) * p.matrix[1][i + 4][m] * MATRIXGATEWEIGHT;
+                    counts[m] += p.matrix[1][i + 4][m];
                 }
             }
         }
@@ -345,35 +346,35 @@ void update_matrix(void) {
 
     speed_mod = counts[0] ? (matrix_values[0] * 198) / (12 * MATRIXMAXSTATE * counts[0]) : 0;
     
-    v = config.length;
+    v = p.config.length;
     if (counts[1]) {
         v += (matrix_values[1] * 31) / (120 * MATRIXMAXSTATE * counts[1]);
         if (v > 32) v = 32; else if (v < 1) v = 1;
     }
     updateLength(v);
     
-    v = config.algoX;
+    v = p.config.algoX;
     if (counts[2]) {
         v += (matrix_values[2] * 127) / (120 * MATRIXMAXSTATE * counts[2]);
         if (v > 127) v = 127; else if (v < 0) v = 0;
     }
     updateAlgoX(v);
 
-    v = config.algoY;
+    v = p.config.algoY;
     if (counts[3]) {
         v += (matrix_values[3] * 127) / (120 * MATRIXMAXSTATE * counts[3]);
         if (v > 127) v = 127; else if (v < 0) v = 0;
     }
     updateAlgoY(v);
         
-    v = config.shift;
+    v = p.config.shift;
     if (counts[4]) {
         v += matrix_values[4] / (10 * MATRIXMAXSTATE * counts[4]);
         if (v > 12) v = 12; else if (v < 0) v = 0;
     }
     updateShift(v);
 
-    v = config.space;
+    v = p.config.space;
     if (counts[5]) {
         v += (matrix_values[5] * 15) / (120 * MATRIXMAXSTATE * counts[5]);
         if (v > 12) v = 12; else if (v < 0) v = 0;
@@ -381,7 +382,7 @@ void update_matrix(void) {
     updateSpace(v);
     
     gate_length_mod = counts[6] ? (matrix_values[6] * 390) / (12 * MATRIXMAXSTATE * counts[6]) : 0;
-    gate_length_mod += gate_length;
+    gate_length_mod += p.gate_length;
     if (gate_length_mod < 100) gate_length_mod = 100; else if (gate_length_mod > 4000) gate_length_mod = 4000;    
     
     if (matrix_values[7] > prevScale && matrix_values[7]/12 > 5) toggle_scale(0);
@@ -397,108 +398,108 @@ void toggle_scale(u8 manual) {
     u8 newScale = (getCurrentScale() + 1) % SCALECOUNT;
     if (getScaleCount(newScale) == 0 && !manual) return;
     setCurrentScale(newScale);
-    if (page == PAGE_PARAM) refresh_grid();
+    if (s.page == PAGE_PARAM) refresh_grid();
 }
 
 void toggle_scaleA_octave() {
-    scaleA_octave = !scaleA_octave;
-    if (page == PAGE_PARAM) refresh_grid();
+    p.scaleA_octave = !p.scaleA_octave;
+    if (s.page == PAGE_PARAM) refresh_grid();
 }
 
 void toggle_scaleB_octave() {
-    scaleB_octave = !scaleB_octave;
-    if (page == PAGE_PARAM) refresh_grid();
+    p.scaleB_octave = !p.scaleB_octave;
+    if (s.page == PAGE_PARAM) refresh_grid();
 }
 
 void toggle_scale_note(u8 scale, u8 note) {
-    scale_buttons[scale][note] = !scale_buttons[scale][note];
-    updateScales(scale_buttons);
-    if (page == PAGE_PARAM) refresh_grid();
+    p.scale_buttons[scale][note] = !p.scale_buttons[scale][note];
+    updateScales(p.scale_buttons);
+    if (s.page == PAGE_PARAM) refresh_grid();
 }
 
 void select_page(u8 p) {
-    page = p;
+    s.page = p;
     refresh_grid();
 }
 
 void select_param(u8 p) {
-    param = p;
+    s.param = p;
     select_page(PAGE_PARAM);
 }
 
 void select_matrix(u8 m) {
-    mi = m;
+    s.mi = m;
     select_page(PAGE_MATRIX);
 }
 
 void toggle_matrix_mute(u8 m) {
-    matrix_on[m] = !matrix_on[m];
+    p.matrix_on[m] = !p.matrix_on[m];
     refresh_grid();
 }
 
 void toggle_matrix_mode() {
-    matrix_mode = matrix_mode == MATRIXMODEEDIT ? MATRIXMODEPERF : MATRIXMODEEDIT;
-    if (page == PAGE_MATRIX) refresh_grid();
+    p.matrix_mode = p.matrix_mode == MATRIXMODEEDIT ? MATRIXMODEPERF : MATRIXMODEEDIT;
+    if (s.page == PAGE_MATRIX) refresh_grid();
 }
 
 void clear_current_matrix() {
     for (int i = 0; i < MATRIXINS; i++)
         for (int o = 0; o < MATRIXOUTS; o++)
-            matrix[mi][i][o] = 0;
+            p.matrix[s.mi][i][o] = 0;
     refresh_grid();
 }
     
 void randomize_current_matrix() {
     clear_current_matrix();
     for (u8 i = 0; i < 10; i++)
-        matrix[mi][rand() % MATRIXINS][(rand() % (MATRIXOUTS - 1)) + 1] = 1;
+        p.matrix[s.mi][rand() % MATRIXINS][(rand() % (MATRIXOUTS - 1)) + 1] = 1;
     refresh_grid();
 }
 
 void toggle_matrix_cell(u8 in, u8 out) {
-    matrix[mi][in][out] = (matrix[mi][in][out] + 1) % (MATRIXMAXSTATE + 1);
+    p.matrix[s.mi][in][out] = (p.matrix[s.mi][in][out] + 1) % (MATRIXMAXSTATE + 1);
     update_matrix();
     refresh_grid();
 }
 
 void set_length(u8 length) {
-    config.length = length;
-    updateLength(config.length);
-    if (page == PAGE_PARAM && param == PARAM_LEN) refresh_grid();
+    p.config.length = length;
+    updateLength(p.config.length);
+    if (s.page == PAGE_PARAM && s.param == PARAM_LEN) refresh_grid();
 }
 
 void set_algoX(u8 algoX) {
-    config.algoX = algoX;
-    updateAlgoX(config.algoX);
-    if (page == PAGE_PARAM && param == PARAM_ALGOX) refresh_grid();
+    p.config.algoX = algoX;
+    updateAlgoX(p.config.algoX);
+    if (s.page == PAGE_PARAM && s.param == PARAM_ALGOX) refresh_grid();
 }
 
 void set_algoY(u8 algoY) {
-    config.algoY = algoY;
-    updateAlgoY(config.algoY);
-    if (page == PAGE_PARAM && param == PARAM_ALGOY) refresh_grid();
+    p.config.algoY = algoY;
+    updateAlgoY(p.config.algoY);
+    if (s.page == PAGE_PARAM && s.param == PARAM_ALGOY) refresh_grid();
 }
 
 void set_shift(u8 shift) {
-    config.shift = shift;
-    updateShift(config.shift);
-    if (page == PAGE_PARAM && param == PARAM_SHIFT) refresh_grid();
+    p.config.shift = shift;
+    updateShift(p.config.shift);
+    if (s.page == PAGE_PARAM && s.param == PARAM_SHIFT) refresh_grid();
 }
 
 void set_space(u8 space) {
-    config.space = space;
-    updateSpace(config.space);
-    if (page == PAGE_PARAM && param == PARAM_SPACE) refresh_grid();
+    p.config.space = space;
+    updateSpace(p.config.space);
+    if (s.page == PAGE_PARAM && s.param == PARAM_SPACE) refresh_grid();
 }
 
 void set_gate_length(u16 len) {
-    gate_length = len;
-    if (page == PAGE_PARAM && param == PARAM_GATEL) refresh_grid();
+    p.gate_length = len;
+    if (s.page == PAGE_PARAM && s.param == PARAM_GATEL) refresh_grid();
 }
 
 void set_transpose(s8 trans) {
-    transpose = trans;
-    if (page == PAGE_PARAM && param == PARAM_TRANS) refresh_grid();
+    p.transpose = trans;
+    if (s.page == PAGE_PARAM && s.param == PARAM_TRANS) refresh_grid();
 }
 
 
@@ -513,13 +514,13 @@ void update_display() {
 
     char s[8];
 
-    itoa(config.length, s, 10);
+    itoa(p.config.length, s, 10);
     draw_str(s, 2, 9, 0);
-    itoa(config.algoX, s, 10);
+    itoa(p.config.algoX, s, 10);
     draw_str(s, 3, 9, 0);
-    itoa(config.algoY, s, 10);
+    itoa(p.config.algoY, s, 10);
     draw_str(s, 4, 9, 0);
-    itoa(config.shift, s, 10);
+    itoa(p.config.shift, s, 10);
     draw_str(s, 5, 9, 0);
     
     refresh_screen();
@@ -590,8 +591,8 @@ void process_grid_press(u8 x, u8 y, u8 on) {
         return;
     }
 
-    if (page == PAGE_PARAM) process_grid_param(x, y, on);
-    else if (page == PAGE_MATRIX) process_grid_matrix(x, y, on);
+    if (s.page == PAGE_PARAM) process_grid_param(x, y, on);
+    else if (s.page == PAGE_MATRIX) process_grid_matrix(x, y, on);
 }
     
 void render_grid() {
@@ -600,20 +601,20 @@ void render_grid() {
     clear_all_grid_leds();
     
     u8 on = 15, off = 7;
-    set_grid_led(0, 0, page == PAGE_MATRIX && mi == 0 ? on : off);
-    set_grid_led(1, 0, page == PAGE_MATRIX && mi == 1 ? on : off);
-    set_grid_led(0, 1, matrix_on[0] ? off : off - 4);
-    set_grid_led(1, 1, matrix_on[1] ? off : off - 4);
-    set_grid_led(6, 0, page == PAGE_PARAM && param == PARAM_LEN ? on : off);
-    set_grid_led(7, 0, page == PAGE_PARAM && param == PARAM_ALGOX ? on : off);
-    set_grid_led(8, 0, page == PAGE_PARAM && param == PARAM_ALGOY ? on : off);
-    set_grid_led(9, 0, page == PAGE_PARAM && param == PARAM_SHIFT ? on : off);
-    set_grid_led(10, 0, page == PAGE_PARAM && param == PARAM_SPACE ? on : off);
-    set_grid_led(11, 0, page == PAGE_PARAM && param == PARAM_GATEL ? on : off);
-    set_grid_led(13, 0, page == PAGE_PARAM && param == PARAM_TRANS ? on : off);
+    set_grid_led(0, 0, s.page == PAGE_MATRIX && s.mi == 0 ? on : off);
+    set_grid_led(1, 0, s.page == PAGE_MATRIX && s.mi == 1 ? on : off);
+    set_grid_led(0, 1, p.matrix_on[0] ? off : off - 4);
+    set_grid_led(1, 1, p.matrix_on[1] ? off : off - 4);
+    set_grid_led(6, 0, s.page == PAGE_PARAM && s.param == PARAM_LEN ? on : off);
+    set_grid_led(7, 0, s.page == PAGE_PARAM && s.param == PARAM_ALGOX ? on : off);
+    set_grid_led(8, 0, s.page == PAGE_PARAM && s.param == PARAM_ALGOY ? on : off);
+    set_grid_led(9, 0, s.page == PAGE_PARAM && s.param == PARAM_SHIFT ? on : off);
+    set_grid_led(10, 0, s.page == PAGE_PARAM && s.param == PARAM_SPACE ? on : off);
+    set_grid_led(11, 0, s.page == PAGE_PARAM && s.param == PARAM_GATEL ? on : off);
+    set_grid_led(13, 0, s.page == PAGE_PARAM && s.param == PARAM_TRANS ? on : off);
     
-    if (page == PAGE_PARAM) render_param_page();
-    else if (page == PAGE_MATRIX) render_matrix_page();
+    if (s.page == PAGE_PARAM) render_param_page();
+    else if (s.page == PAGE_MATRIX) render_matrix_page();
 }
 
 void process_grid_param(u8 x, u8 y, u8 on) {
@@ -636,7 +637,7 @@ void process_grid_param(u8 x, u8 y, u8 on) {
     
     if (y < 3 || y > 4) return;
     
-    switch (param) {
+    switch (s.param) {
 
         case PARAM_LEN:
             set_length(((y - 3) << 4) + x + 1);
@@ -644,16 +645,16 @@ void process_grid_param(u8 x, u8 y, u8 on) {
         
         case PARAM_ALGOX:
             if (y == 3 && x > 3 && x < 12)
-                set_algoX (((x - 4) << 4) + (config.algoX & 15));
+                set_algoX (((x - 4) << 4) + (p.config.algoX & 15));
             else if (y == 4)
-                set_algoX((config.algoX & 0b1110000) + x);
+                set_algoX((p.config.algoX & 0b1110000) + x);
             break;
         
         case PARAM_ALGOY:
             if (y == 3 && x > 3 && x < 12)
-                set_algoY (((x - 4) << 4) + (config.algoY & 15));
+                set_algoY (((x - 4) << 4) + (p.config.algoY & 15));
             else if (y == 4)
-                set_algoY((config.algoY & 0b1110000) + x);
+                set_algoY((p.config.algoY & 0b1110000) + x);
             break;
         
         case PARAM_SHIFT:
@@ -689,21 +690,21 @@ void render_param_page() {
     set_grid_led(0, 7, off);
     set_grid_led(0, getCurrentScale() ? 7 : 6, on);
     
-    set_grid_led(15, 6, scaleA_octave ? on : off);
-    set_grid_led(15, 7, scaleB_octave ? on : off);
+    set_grid_led(15, 6, p.scaleA_octave ? on : off);
+    set_grid_led(15, 7, p.scaleB_octave ? on : off);
 
     for (u8 i = 0; i < SCALECOUNT; i++) {
         y = 8 - SCALECOUNT + i;
-        for (u8 j = 0; j < SCALELEN; j++) set_grid_led(2 + j, y, scale_buttons[i][j] ? on : off);
+        for (u8 j = 0; j < SCALELEN; j++) set_grid_led(2 + j, y, p.scale_buttons[i][j] ? on : off);
     }
     
-    switch (param) {
+    switch (s.param) {
         
         case PARAM_LEN:
             for (u8 x = 0; x < 16; x++) for (u8 y = 3; y < 5; y++) set_grid_led(x, y, off);
             
             y = y2 = 3;
-            p1 = config.length - 1;
+            p1 = p.config.length - 1;
             if (p1 > 16) { y = 4; p1 -= 16; }
             p2 = getLength() - 1;
             if (p2 > 16) { y2 = 4; p2 -= 16; }
@@ -712,38 +713,38 @@ void render_param_page() {
             break;
         
         case PARAM_ALGOX:
-            p1 = (config.algoX >> 4);
+            p1 = (p.config.algoX >> 4);
             p2 = (getAlgoX() >> 4);
             for (u8 i = 0; i < 8; i++) set_grid_led(i + 4, 3, i == p1 ? on : (i == p2 ? mod : off));
             
-            p1 = (config.algoX & 15);
+            p1 = (p.config.algoX & 15);
             p2 = (getAlgoX() & 15);
             for (u8 i = 0; i < 16; i++) set_grid_led(i, 4, i == p1 ? on : (i == p2 ? mod : off));
             break;
         
         case PARAM_ALGOY:
-            p1 = config.algoY >> 4;
+            p1 = p.config.algoY >> 4;
             p2 = (getAlgoY() >> 4);
             for (u8 i = 0; i < 8; i++) set_grid_led(i + 4, 3, i == p1 ? on : (i == p2 ? mod : off));
             
-            p1 = (config.algoY & 15);
+            p1 = (p.config.algoY & 15);
             p2 = (getAlgoY() & 15);
             for (u8 i = 0; i < 16; i++) set_grid_led(i, 4, i == p1 ? on : (i == p2 ? mod : off));
             break;
         
         case PARAM_SHIFT:
-            for (u8 x = 0; x < 13; x++) set_grid_led(x + 2, 3, x == config.shift ? on : (x == getShift() ? mod : off));
+            for (u8 x = 0; x < 13; x++) set_grid_led(x + 2, 3, x == p.config.shift ? on : (x == getShift() ? mod : off));
             break;
         
         case PARAM_SPACE:
-            for (u8 x = 0; x < 16; x++) set_grid_led(x, 3, x == config.space ? on : (x == getSpace() ? mod : off));
+            for (u8 x = 0; x < 16; x++) set_grid_led(x, 3, x == p.config.space ? on : (x == getSpace() ? mod : off));
             break;
         
         case PARAM_GATEL:
             for (u8 x = 0; x < 16; x++) for (u8 y = 3; y < 5; y++) set_grid_led(x, y, off);
             
             y = y2 = 3;
-            p1 = gate_length / 129;
+            p1 = p.gate_length / 129;
             if (p1 > 16) { y = 4; p1 -= 16; }
             p2 = gate_length_mod / 129;
             if (p2 > 16) { y2 = 4; p2 -= 16; }
@@ -756,13 +757,13 @@ void render_param_page() {
                 for (u8 x = 0; x < 16; x++)
                     set_grid_led(x, y, off);
                 
-            set_grid_led(15, 3, transpose ? mod : on);
-            set_grid_led(0, 4, transpose ? mod : on);
+            set_grid_led(15, 3, p.transpose ? mod : on);
+            set_grid_led(0, 4, p.transpose ? mod : on);
             
-            if (transpose < 0)
-                set_grid_led(15 + transpose, 3, on);
-            else if (transpose)
-                set_grid_led(transpose, 3, on);
+            if (p.transpose < 0)
+                set_grid_led(15 + p.transpose, 3, on);
+            else if (p.transpose)
+                set_grid_led(p.transpose, 3, on);
         
             break;
         
@@ -792,16 +793,16 @@ void process_grid_matrix(u8 x, u8 y, u8 on) {
     else if (x > 12) x -= 6;
     else return;
     
-    if (matrix_mode == MATRIXMODEPERF || on) toggle_matrix_cell(y - 1, x);
+    if (p.matrix_mode == MATRIXMODEPERF || on) toggle_matrix_cell(y - 1, x);
 }
 
 void render_matrix_page() {
     set_grid_led(0, 7, 10);
     set_grid_led(1, 7, 10);
-    set_grid_led(0, 4, matrix_mode == MATRIXMODEEDIT ? 10 : 4);
+    set_grid_led(0, 4, p.matrix_mode == MATRIXMODEEDIT ? 10 : 4);
     
     u8 d = 12 / (MATRIXMAXSTATE + 1);
-    u8 a = matrix_on[mi] ? 3 : 2;
+    u8 a = p.matrix_on[s.mi] ? 3 : 2;
     
     for (u8 x = 0; x < MATRIXOUTS; x++)
         for (u8 y = 0; y < MATRIXINS; y++) {
@@ -809,7 +810,7 @@ void render_matrix_page() {
             if (x == 0) _x = 4;
             else if (x < 7) _x = x + 5;
             else _x = x + 6;
-            set_grid_led(_x, y + 1, matrix[mi][y][x] * d + a);
+            set_grid_led(_x, y + 1, p.matrix[s.mi][y][x] * d + a);
         }
 }
 
@@ -864,11 +865,15 @@ char* itoa(int value, char* result, int base) {
 }
 
 /*
+
 presets
+
 i2c config
 switch outputs between notes/mod cvs
+
 clock input
 clock / reset outputs
+
 visualize values for algox/algoy
 way to mute voices
 speed for ansible
@@ -881,7 +886,7 @@ transfer matrix stuff to engine?
 
 - additional gate inputs on ansible/teletype
 - visualize value changes from matrix
-- momentary matrix editing
+- matrix perf mode
 - transpose
 - gate length
   
