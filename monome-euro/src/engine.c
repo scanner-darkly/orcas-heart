@@ -124,17 +124,21 @@ void updateSpace(uint8_t space) {
     engine.config.space = space;
 }
 
-void reset() {
-    engine.globalCounter = engine.spaceCounter = 0;
-    for (uint8_t i = 0; i < TRACKCOUNT; i++) engine.counter[i] = 0;
-}
-
 void clock() {
     updateCounters();
     updateTrackParameters();
     updateTrackValues();
     calculateNotes();
     calculateMods();
+}
+
+void reset() {
+    engine.globalCounter = engine.spaceCounter = 0;
+    for (uint8_t i = 0; i < TRACKCOUNT; i++) engine.counter[i] = 0;
+}
+
+uint8_t isReset() {
+    return engine.globalCounter == 0;
 }
 
 void setCurrentScale(uint8_t scale) {

@@ -67,8 +67,9 @@ void updateAlgoY(uint8_t algoY);
 void updateShift(uint8_t shift);
 void updateSpace(uint8_t space);
 
-void reset(void);
 void clock(void);
+void reset(void);
+uint8_t isReset(void);
 
 void setCurrentScale(uint8_t scale);
 uint8_t getCurrentScale(void);

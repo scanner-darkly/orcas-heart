@@ -18,6 +18,7 @@
 #define MATRIXOUTS 10
 #define MATRIXINS   7
 #define MATRIXCOUNT 2
+#define TRANSSEQLEN 8
 
 
 // ----------------------------------------------------------------------------
@@ -36,7 +37,8 @@ typedef struct {
     engine_config_t config;
     u16 speed;
     u16 gate_length;
-    s8 transpose;
+    s8 transpose[TRANSSEQLEN];
+    u8 transpose_seq_on;
 
     u8 scale_buttons[SCALECOUNT][SCALELEN];
     u8 scaleA_octave, scaleB_octave;

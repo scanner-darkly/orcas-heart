@@ -50,6 +50,7 @@ u8 selected_preset;
 
 u32 speed_mod, gate_length_mod;
 s32 matrix_values[MATRIXOUTS];
+u8 trans_step, trans_sel, reset_phase;
 
 // prototypes
 
@@ -77,7 +78,11 @@ static void set_shift(u8 shift);
 static void set_space(u8 space);
 
 static void set_gate_length(u16 len);
+static void transpose_step(void);
+static void toggle_transpose_seq(void);
 static void set_transpose(s8 trans);
+static void set_transpose_sel(u8 sel);
+static void set_transpose_step(u8 step);
 
 static void select_page(u8 p);
 static void select_param(u8 p);
@@ -123,7 +128,8 @@ void init_presets(void) {
     p.config.space = 0;
     p.speed = 400;
     p.gate_length = 1000;
-    p.transpose = 0;
+    for (u8 i = 0; i < TRANSSEQLEN; i++) p.transpose[i] = 0;
+    p.transpose_seq_on = 0;
     
     for (u8 s = 0; s < SCALECOUNT; s++)
         for (u8 i = 0; i < SCALELEN; i++)
@@ -260,10 +266,18 @@ void load_preset(u8 preset) {
 
 void step() {
     clock();
+    transpose_step();
     output_notes();
     output_mods();
     update_matrix();
     refresh_grid();
+}
+
+void transpose_step() {
+    if (p.transpose_seq_on && isReset()) {
+        trans_step = (trans_step + 1) % TRANSSEQLEN;
+        if (s.page == PAGE_PARAM && s.param == PARAM_TRANS) refresh_grid();
+    }
 }
 
 void update_parameters() {
@@ -279,7 +293,7 @@ void update_parameters() {
 }
 
 void output_notes(void) {
-    u8 trans = 24 + p.transpose;
+    u8 trans = 24 + p.transpose[trans_step];
     u8 scale = getCurrentScale();
     if (!scale && p.scaleA_octave) trans += 12;
     else if (scale && p.scaleB_octave) trans += 12;
@@ -315,29 +329,47 @@ void update_matrix(void) {
     u8 prevOctaveA = matrix_values[8];
     u8 prevOctaveB = matrix_values[9];
     
+    if (isReset()) {
+        reset_phase = !reset_phase;
+    }
+    
     u8 counts[MATRIXOUTS];
     for (int m = 0; m < MATRIXOUTS; m++) {
         matrix_values[m] = 0;
         counts[m] = 0;
+        
         for (u8 i = 0; i < 4; i++) {
-            
             if (p.matrix_on[0]) {
                 counts[m] += p.matrix[0][i][m];
                 matrix_values[m] += getNote(i) * p.matrix[0][i][m];
-                if (i < 3) {
-                    counts[m] += p.matrix[0][i + 4][m];
-                    matrix_values[m] += getGate(i) * p.matrix[0][i + 4][m] * MATRIXGATEWEIGHT;
-                }
             }
             
             if (p.matrix_on[1]) {
                 counts[m] += p.matrix[1][i][m];
                 matrix_values[m] += getModCV(i) * p.matrix[1][i][m] * 12;
-                if (i < 3) {
-                    matrix_values[m] += getModGate(i) * p.matrix[1][i + 4][m] * MATRIXGATEWEIGHT;
-                    counts[m] += p.matrix[1][i + 4][m];
-                }
             }
+        }
+
+        for (u8 i = 0; i < 2; i++) {
+            if (p.matrix_on[0]) {
+                counts[m] += p.matrix[0][i + 4][m];
+                matrix_values[m] += getGate(i) * p.matrix[0][i + 4][m] * MATRIXGATEWEIGHT;
+            }
+            
+            if (p.matrix_on[1]) {
+                counts[m] += p.matrix[1][i + 4][m];
+                matrix_values[m] += getModGate(i) * p.matrix[1][i + 4][m] * MATRIXGATEWEIGHT;
+            }
+        }
+        
+        if (p.matrix_on[0] & p.matrix[0][6][m]) {
+            counts[m]++;
+            matrix_values[m] += reset_phase * MATRIXGATEWEIGHT;
+        }
+
+        if (p.matrix_on[1] & p.matrix[1][6][m]) {
+            counts[m]++;
+            matrix_values[m] += reset_phase * MATRIXGATEWEIGHT;
         }
     }
     
@@ -385,11 +417,11 @@ void update_matrix(void) {
     gate_length_mod += p.gate_length;
     if (gate_length_mod < 100) gate_length_mod = 100; else if (gate_length_mod > 4000) gate_length_mod = 4000;    
     
-    if (matrix_values[7] > prevScale && matrix_values[7]/12 > 5) toggle_scale(0);
+    if (matrix_values[7] > prevScale) toggle_scale(0);
     
-    if (matrix_values[8] > prevOctaveA && matrix_values[8]/12 > 5) toggle_scaleA_octave();
+    if (matrix_values[8] > prevOctaveA) toggle_scaleA_octave();
 
-    if (matrix_values[9] > prevOctaveB && matrix_values[9]/12 > 5) toggle_scaleB_octave();
+    if (matrix_values[9] > prevOctaveB) toggle_scaleB_octave();
     
     refresh_grid();
 }
@@ -497,9 +529,24 @@ void set_gate_length(u16 len) {
     if (s.page == PAGE_PARAM && s.param == PARAM_GATEL) refresh_grid();
 }
 
+void toggle_transpose_seq() {
+    p.transpose_seq_on = !p.transpose_seq_on;
+    refresh_grid();
+}
+
 void set_transpose(s8 trans) {
-    p.transpose = trans;
+    p.transpose[trans_sel] = trans;
     if (s.page == PAGE_PARAM && s.param == PARAM_TRANS) refresh_grid();
+}
+
+void set_transpose_sel(u8 sel) {
+    trans_sel = sel;
+    refresh_grid();
+}
+
+void set_transpose_step(u8 step) {
+    trans_step = step;
+    refresh_grid();
 }
 
 
@@ -576,6 +623,8 @@ void process_grid_press(u8 x, u8 y, u8 on) {
             case 13:
                 select_param(PARAM_TRANS);
                 break;
+            case 15:
+                toggle_transpose_seq();
             default:
                 break;
         }
@@ -612,6 +661,7 @@ void render_grid() {
     set_grid_led(10, 0, s.page == PAGE_PARAM && s.param == PARAM_SPACE ? on : off);
     set_grid_led(11, 0, s.page == PAGE_PARAM && s.param == PARAM_GATEL ? on : off);
     set_grid_led(13, 0, s.page == PAGE_PARAM && s.param == PARAM_TRANS ? on : off);
+    set_grid_led(15, 0, p.transpose_seq_on ? on : off);
     
     if (s.page == PAGE_PARAM) render_param_page();
     else if (s.page == PAGE_MATRIX) render_matrix_page();
@@ -635,12 +685,10 @@ void process_grid_param(u8 x, u8 y, u8 on) {
     else if (y > 5 && y < 8 && x > 1 && x < 14)
         toggle_scale_note(y - 6, x - 2);
     
-    if (y < 3 || y > 4) return;
-    
     switch (s.param) {
 
         case PARAM_LEN:
-            set_length(((y - 3) << 4) + x + 1);
+            if (y > 2 && y < 5) set_length(((y - 3) << 4) + x + 1);
             break;
         
         case PARAM_ALGOX:
@@ -666,11 +714,17 @@ void process_grid_param(u8 x, u8 y, u8 on) {
             break;
         
         case PARAM_GATEL:
-            set_gate_length((((y - 3) << 4) + x) * 129);
+            if (y > 2 && y < 5) set_gate_length((((y - 3) << 4) + x) * 129);
             break;
         
         case PARAM_TRANS:
-            if (y == 3)
+            if (y == 2) {
+                u8 t = x - (8 - TRANSSEQLEN / 2);
+                if (t < TRANSSEQLEN) {
+                    set_transpose_sel(t);
+                    if (!p.transpose_seq_on) set_transpose_step(t);
+                }
+            } else if (y == 3)
                 set_transpose(x - 15);
             else if (y == 4)
                 set_transpose(x);
@@ -753,17 +807,22 @@ void render_param_page() {
             break;
 
         case PARAM_TRANS:
+            p1 = 8 - TRANSSEQLEN / 2;
+            for (u8 i = 0; i < TRANSSEQLEN; i++) set_grid_led(i + p1, 2, off);
+            set_grid_led(trans_sel + p1, 2, mod);
+            set_grid_led(trans_step + p1, 2, on);
+        
             for (u8 y = 3; y < 5; y++)
                 for (u8 x = 0; x < 16; x++)
                     set_grid_led(x, y, off);
                 
-            set_grid_led(15, 3, p.transpose ? mod : on);
-            set_grid_led(0, 4, p.transpose ? mod : on);
+            set_grid_led(15, 3, p.transpose[trans_sel] ? mod : on);
+            set_grid_led(0, 4, p.transpose[trans_sel] ? mod : on);
             
-            if (p.transpose < 0)
-                set_grid_led(15 + p.transpose, 3, on);
-            else if (p.transpose)
-                set_grid_led(p.transpose, 3, on);
+            if (p.transpose[trans_sel] < 0)
+                set_grid_led(15 + p.transpose[trans_sel], 3, on);
+            else if (p.transpose[trans_sel])
+                set_grid_led(p.transpose[trans_sel], 4, on);
         
             break;
         
@@ -867,18 +926,17 @@ char* itoa(int value, char* result, int base) {
 /*
 
 presets
+way to mute voices
 
 i2c config
 switch outputs between notes/mod cvs
 
-clock input
+clock input / make gate len proportional
 clock / reset outputs
-
-visualize values for algox/algoy
-way to mute voices
 speed for ansible
 
 MIDI keyboard support
+visualize values for algox/algoy
 toggle between directly mapped voices / first available
 transfer matrix stuff to engine?
     
@@ -889,5 +947,6 @@ transfer matrix stuff to engine?
 - matrix perf mode
 - transpose
 - gate length
+- changed 7th mod source to reset
   
 */
