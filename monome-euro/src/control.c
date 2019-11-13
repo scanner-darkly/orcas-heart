@@ -21,10 +21,10 @@
 
 #define PARAMTIMER 0
 #define CLOCKTIMER 1
-#define GATETIMER 2
+#define GATETIMER  2
 
 #define PAGE_PARAM   0
-#define PAGE_MATRIX 1
+#define PAGE_MATRIX  1
 
 #define PARAM_LEN   0
 #define PARAM_ALGOX 1
@@ -51,11 +51,15 @@ u8 selected_preset;
 u32 speed_mod, gate_length_mod;
 s32 matrix_values[MATRIXOUTS];
 u8 trans_step, trans_sel, reset_phase;
+u8 is_presets, is_preset_saved;
 
 // prototypes
 
+static void toggle_preset_page(void);
 static void load_preset(u8 preset);
+static void load_preset_and_exit(u8 preset);
 static void save_preset(void);
+static void save_preset_and_confirm(void);
 
 static void step(void);
 
@@ -99,9 +103,11 @@ static void process_gate(u8 index, u8 on);
 static void process_grid_press(u8 x, u8 y, u8 on);
 static void process_grid_param(u8 x, u8 y, u8 on);
 static void process_grid_matrix(u8 x, u8 y, u8 on);
+static void process_grid_presets(u8 x, u8 y, u8 on);
 
 static void render_param_page(void);
 static void render_matrix_page(void);
+static void render_presets(void);
 
 static char* itoa(int value, char* result, int base);
 
@@ -134,6 +140,8 @@ void init_presets(void) {
     for (u8 s = 0; s < SCALECOUNT; s++)
         for (u8 i = 0; i < SCALELEN; i++)
             p.scale_buttons[s][i] = 0;
+        
+    p.scale_buttons[0][0] = p.scale_buttons[0][3] = p.scale_buttons[0][5] = p.scale_buttons[0][7] = 1;
         
     p.scaleA_octave = 0;
     p.scaleB_octave = 0;
@@ -174,6 +182,7 @@ void init_control(void) {
 void process_event(u8 event, u8 *data, u8 length) {
     switch (event) {
         case MAIN_CLOCK_RECEIVED:
+            step();
             break;
         
         case MAIN_CLOCK_SWITCHED:
@@ -197,9 +206,11 @@ void process_event(u8 event, u8 *data, u8 length) {
             break;
     
         case FRONT_BUTTON_PRESSED:
+            if (!data[0]) toggle_preset_page();
             break;
     
         case FRONT_BUTTON_HELD:
+            save_preset_and_confirm();
             break;
     
         case BUTTON_PRESSED:
@@ -212,7 +223,7 @@ void process_event(u8 event, u8 *data, u8 length) {
             if (data[0] == PARAMTIMER)
                 update_parameters();
             else if (data[0] == CLOCKTIMER)
-                step();
+                if (!is_external_clock_connected()) step();
             else if (data[0] >= GATETIMER)
                 stop_note(data[0] - GATETIMER);
             break;
@@ -247,10 +258,22 @@ void process_event(u8 event, u8 *data, u8 length) {
 // ----------------------------------------------------------------------------
 // actions
 
+void toggle_preset_page() {
+    is_presets = !is_presets;
+    refresh_grid();
+}
+
 void save_preset() {
     store_preset_to_flash(selected_preset, &meta, &p);
     store_shared_data_to_flash(&s);
     store_preset_index(0);
+}
+
+void save_preset_and_confirm() {
+    save_preset();
+    is_presets = 0;
+    is_preset_saved = 1;
+    refresh_grid();
 }
 
 void load_preset(u8 preset) {
@@ -261,6 +284,12 @@ void load_preset(u8 preset) {
     update_timer_interval(CLOCKTIMER, p.speed);
     updateScales(p.scale_buttons);
 
+    refresh_grid();
+}
+
+void load_preset_and_exit(u8 preset) {
+    load_preset(preset);
+    is_presets = 0;
     refresh_grid();
 }
 
@@ -593,6 +622,17 @@ void process_gate(u8 index, u8 on) {
 }
 
 void process_grid_press(u8 x, u8 y, u8 on) {
+    if (is_preset_saved) {
+        is_preset_saved = is_presets = 0;
+        refresh_grid();
+        return;
+    }
+    
+    if (is_presets) {
+        process_grid_presets(x, y, on);
+        return;
+    }
+    
     if (y == 0) {
         if (!on) return;
         switch (x) {
@@ -620,7 +660,7 @@ void process_grid_press(u8 x, u8 y, u8 on) {
             case 11:
                 select_param(PARAM_GATEL);
                 break;
-            case 13:
+            case 14:
                 select_param(PARAM_TRANS);
                 break;
             case 15:
@@ -649,6 +689,20 @@ void render_grid() {
     
     clear_all_grid_leds();
     
+    if (is_preset_saved) {
+        for (u8 x = 6; x < 10; x++)
+            for (u8 y = 2; y < 6; y++)
+                set_grid_led(x, y, 10);
+        set_grid_led(7, 4, 0);
+        set_grid_led(8, 4, 0);
+        return;
+    }
+    
+    if (is_presets) {
+        render_presets();
+        return;
+    }
+    
     u8 on = 15, off = 7;
     set_grid_led(0, 0, s.page == PAGE_MATRIX && s.mi == 0 ? on : off);
     set_grid_led(1, 0, s.page == PAGE_MATRIX && s.mi == 1 ? on : off);
@@ -660,11 +714,38 @@ void render_grid() {
     set_grid_led(9, 0, s.page == PAGE_PARAM && s.param == PARAM_SHIFT ? on : off);
     set_grid_led(10, 0, s.page == PAGE_PARAM && s.param == PARAM_SPACE ? on : off);
     set_grid_led(11, 0, s.page == PAGE_PARAM && s.param == PARAM_GATEL ? on : off);
-    set_grid_led(13, 0, s.page == PAGE_PARAM && s.param == PARAM_TRANS ? on : off);
+    set_grid_led(14, 0, s.page == PAGE_PARAM && s.param == PARAM_TRANS ? on : off);
     set_grid_led(15, 0, p.transpose_seq_on ? on : off);
     
     if (s.page == PAGE_PARAM) render_param_page();
     else if (s.page == PAGE_MATRIX) render_matrix_page();
+}
+
+void process_grid_presets(u8 x, u8 y, u8 on) {
+    if (!on) return;
+    
+    if (y == 2 && x > 3 && x < 12) {
+        selected_preset = x - 4;
+        save_preset_and_confirm();
+        return;
+    }
+
+    if (y == 5 && x > 3 && x < 12) {
+        load_preset_and_exit(x - 4);
+        return;
+    }
+}
+
+void render_presets() {
+    u8 off = 4;
+    
+    for (u8 x = 4; x < 12; x++)
+        set_grid_led(x, 2, off + (x & 1) * 4);
+        
+    for (u8 x = 4; x < 12; x++)
+        set_grid_led(x, 5, off + (x & 1) * 4);
+
+    set_grid_led(selected_preset + 4, 5, 15);
 }
 
 void process_grid_param(u8 x, u8 y, u8 on) {
@@ -819,6 +900,11 @@ void render_param_page() {
             set_grid_led(15, 3, p.transpose[trans_sel] ? mod : on);
             set_grid_led(0, 4, p.transpose[trans_sel] ? mod : on);
             
+            if (p.transpose[trans_step] < 0)
+                set_grid_led(15 + p.transpose[trans_step], 3, mod);
+            else if (p.transpose[trans_step])
+                set_grid_led(p.transpose[trans_step], 4, mod);
+
             if (p.transpose[trans_sel] < 0)
                 set_grid_led(15 + p.transpose[trans_sel], 3, on);
             else if (p.transpose[trans_sel])
@@ -925,28 +1011,22 @@ char* itoa(int value, char* result, int base) {
 
 /*
 
-presets
-way to mute voices
-
 i2c config
-switch outputs between notes/mod cvs
-
-clock input / make gate len proportional
-clock / reset outputs
 speed for ansible
+transfer matrix stuff to engine
 
 MIDI keyboard support
 visualize values for algox/algoy
+switch outputs between notes/mod cvs
+clock / reset outputs
 toggle between directly mapped voices / first available
-transfer matrix stuff to engine?
+way to mute voices
+make gate len proportional to ext clock
     
 -- not tested:
 
 - additional gate inputs on ansible/teletype
-- visualize value changes from matrix
-- matrix perf mode
-- transpose
 - gate length
-- changed 7th mod source to reset
+- clock input
   
 */
