@@ -28,6 +28,7 @@ typedef struct {
     u8 page;
     u8 param;
     u8 mi;
+    u8 i2c_device;
 } shared_data_t;
 
 typedef struct {

@@ -189,7 +189,7 @@ void updateCounters() {
     }
 }
 
-static void updateTrackParameters(void) {
+void updateTrackParameters() {
     engine.divisor[0] = (engine.config.algoX & 3) + 1;
     engine.phase[0] = engine.config.algoX >> 5;
    
@@ -204,7 +204,7 @@ static void updateTrackParameters(void) {
     }
 }
 
-static void updateTrackValues(void) {
+void updateTrackValues() {
     engine.totalWeight = 0;
     for (uint8_t i = 0; i < TRACKCOUNT; i++) {
         engine.trackOn[i] = ((engine.counter[i] + engine.phase[i]) / engine.divisor[i]) & 1;
@@ -217,7 +217,7 @@ void calculateNotes(void) {
     for (uint8_t i = 0; i < NOTECOUNT; i++) calculateNextNote(i);
 }
 
-void calculateMods(void) {
+void calculateMods() {
     for (uint8_t i = 0; i < MODCOUNT; i++) engine.modGateOn[i] = engine.trackOn[i % TRACKCOUNT];
 
     engine.modCvs[0] = engine.totalWeight + engine.weightOn[0];

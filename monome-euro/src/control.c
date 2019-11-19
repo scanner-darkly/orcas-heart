@@ -17,9 +17,9 @@
 #include "engine.h"
 
 
-#define PARAMCYCLE 4
+#define SPEEDCYCLE 4
 
-#define PARAMTIMER 0
+#define SPEEDTIMER 0
 #define CLOCKTIMER 1
 #define GATETIMER  2
 
@@ -48,7 +48,7 @@ u8 selected_preset;
 
 // local vars
 
-u32 speed_mod, gate_length_mod;
+u32 speed, speed_mod, gate_length_mod;
 s32 matrix_values[MATRIXOUTS];
 u8 trans_step, trans_sel, reset_phase;
 u8 is_presets, is_preset_saved;
@@ -56,14 +56,20 @@ u8 is_presets, is_preset_saved;
 // prototypes
 
 static void toggle_preset_page(void);
-static void load_preset(u8 preset);
-static void load_preset_and_exit(u8 preset);
 static void save_preset(void);
 static void save_preset_and_confirm(void);
+static void load_preset(u8 preset);
+static void load_preset_and_exit(u8 preset);
+
+static void set_up_i2c(void);
+static void select_i2c_device(u8 device);
+
+static void update_speed_from_knob(void);
+static void update_speed_from_buttons(u8 up);
+static void update_speed(void);
 
 static void step(void);
 
-static void update_parameters(void);
 static void update_matrix(void);
 
 static void output_notes(void);
@@ -125,11 +131,12 @@ void init_presets(void) {
     s.page = PAGE_PARAM;
     s.param = PARAM_LEN;
     s.mi = 0;
+    s.i2c_device = VOICE_JF;
     store_shared_data_to_flash(&s);
     
     p.config.length = 8;
-    p.config.algoX = 0;
-    p.config.algoY = 0;
+    p.config.algoX = 1;
+    p.config.algoY = 1;
     p.config.shift = 0;
     p.config.space = 0;
     p.speed = 400;
@@ -164,19 +171,20 @@ void init_control(void) {
     // load shared data
     // load current preset and its meta data
     
-    add_timed_event(CLOCKTIMER, 100, 1);
-
     load_shared_data_from_flash(&s);
     load_preset(get_preset_index());
     
     // set up any other initial values and timers
     
+    add_timed_event(CLOCKTIMER, 100, 1);
+    speed = p.speed;
     speed_mod = gate_length_mod = 0;
-    add_timed_event(PARAMTIMER, PARAMCYCLE, 1);
+    update_speed();
+    
+    add_timed_event(SPEEDTIMER, SPEEDCYCLE, 1);
     
     set_as_i2c_leader();
-    set_jf_mode(1);
-    for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_JF, i, 1);
+    set_up_i2c();
 }
 
 void process_event(u8 event, u8 *data, u8 length) {
@@ -214,18 +222,20 @@ void process_event(u8 event, u8 *data, u8 length) {
             break;
     
         case BUTTON_PRESSED:
+            if (data[1]) update_speed_from_buttons(data[0]);
             break;
     
         case I2C_RECEIVED:
             break;
             
         case TIMED_EVENT:
-            if (data[0] == PARAMTIMER)
-                update_parameters();
-            else if (data[0] == CLOCKTIMER)
+            if (data[0] == SPEEDTIMER) {
+                update_speed_from_knob();
+            } else if (data[0] == CLOCKTIMER) {
                 if (!is_external_clock_connected()) step();
-            else if (data[0] >= GATETIMER)
+            } else if (data[0] >= GATETIMER) {
                 stop_note(data[0] - GATETIMER);
+            }
             break;
         
         case MIDI_CONNECTED:
@@ -293,6 +303,62 @@ void load_preset_and_exit(u8 preset) {
     refresh_grid();
 }
 
+void set_up_i2c() {
+    for (u8 i = 0; i < 6; i++) map_voice(i, VOICE_JF, i, 0);
+    for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_ER301, i, 0);
+    for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_TXO_NOTE, i, 0);
+    
+    switch (s.i2c_device) {
+        case VOICE_JF:
+            set_jf_mode(1);
+            for (u8 i = 0; i < 6; i++) map_voice(i, VOICE_JF, i, i < 6);
+            break;
+        case VOICE_ER301:
+            for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_ER301, i, 1);
+            break;
+        case VOICE_TXO_NOTE:
+            for (u8 i = 0; i < NOTECOUNT; i++) {
+                set_txo_mode(i, 1);
+                map_voice(i, VOICE_TXO_NOTE, i, 1);
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+void select_i2c_device(u8 device) {
+    s.i2c_device = device;
+    set_up_i2c();
+    refresh_grid();
+}
+
+void update_speed_from_knob() {
+    if (get_knob_count() == 0) return;
+    
+    speed = ((get_knob_value(0) * 1980) >> 16) + 20;
+    update_speed();
+}
+
+void update_speed_from_buttons(u8 up) {
+    if (!up && speed > 20)
+        speed--;
+    else if (up && speed < 2000)
+        speed++;
+    update_speed();
+}
+
+void update_speed() {
+    u32 sp = speed + speed_mod;
+    if (sp > 2000) sp = 2000; else if (sp < 20) sp = 20;
+    
+    if (sp != p.speed) {
+        p.speed = sp;
+        update_timer_interval(CLOCKTIMER, 60000 / sp);
+        update_display();
+    }
+}
+
 void step() {
     clock();
     transpose_step();
@@ -306,18 +372,6 @@ void transpose_step() {
     if (p.transpose_seq_on && isReset()) {
         trans_step = (trans_step + 1) % TRANSSEQLEN;
         if (s.page == PAGE_PARAM && s.param == PARAM_TRANS) refresh_grid();
-    }
-}
-
-void update_parameters() {
-    u32 sp = ((get_knob_value(0) * 1980) >> 16) + 20 + speed_mod;
-    if (sp > 2000) sp = 2000; else if (sp < 20) sp = 20;
-    u32 newSpeed = 60000 / sp;
-    
-    if (newSpeed != p.speed) {
-        p.speed = newSpeed;
-        update_timer_interval(CLOCKTIMER, p.speed);
-        update_display();
     }
 }
 
@@ -734,10 +788,19 @@ void process_grid_presets(u8 x, u8 y, u8 on) {
         load_preset_and_exit(x - 4);
         return;
     }
+    
+    if (x == 15) {
+        if (y == 2)
+            select_i2c_device(VOICE_ER301);
+        else if (y == 3)
+            select_i2c_device(VOICE_JF);
+        else if (y == 4)
+            select_i2c_device(VOICE_TXO_NOTE);
+    }
 }
 
 void render_presets() {
-    u8 off = 4;
+    u8 on = 10, off = 4;
     
     for (u8 x = 4; x < 12; x++)
         set_grid_led(x, 2, off + (x & 1) * 4);
@@ -746,6 +809,10 @@ void render_presets() {
         set_grid_led(x, 5, off + (x & 1) * 4);
 
     set_grid_led(selected_preset + 4, 5, 15);
+    
+    set_grid_led(15, 2, s.i2c_device == VOICE_ER301 ? on : off);
+    set_grid_led(15, 3, s.i2c_device == VOICE_JF ? on : off);
+    set_grid_led(15, 4, s.i2c_device == VOICE_TXO_NOTE ? on : off);
 }
 
 void process_grid_param(u8 x, u8 y, u8 on) {
@@ -1011,22 +1078,24 @@ char* itoa(int value, char* result, int base) {
 
 /*
 
-i2c config
-speed for ansible
-transfer matrix stuff to engine
+- i2c parameters in mod matrix
 
-MIDI keyboard support
-visualize values for algox/algoy
-switch outputs between notes/mod cvs
-clock / reset outputs
-toggle between directly mapped voices / first available
-way to mute voices
-make gate len proportional to ext clock
-    
 -- not tested:
 
+- i2c config
+- speed for ansible
 - additional gate inputs on ansible/teletype
 - gate length
 - clock input
+
+-- future
   
+- clock / reset outputs
+- MIDI keyboard support
+- visualize values for algox/algoy
+- switch outputs between notes/mod cvs
+- toggle between directly mapped voices / first available
+- way to mute voices
+- make gate len proportional to ext clock
+
 */
