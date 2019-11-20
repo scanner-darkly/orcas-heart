@@ -23,8 +23,9 @@
 #define CLOCKTIMER 1
 #define GATETIMER  2
 
-#define PAGE_PARAM   0
-#define PAGE_MATRIX  1
+#define PAGE_PARAM  0
+#define PAGE_MATRIX 1
+#define PAGE_I2C    2
 
 #define PARAM_LEN   0
 #define PARAM_ALGOX 1
@@ -109,10 +110,12 @@ static void process_gate(u8 index, u8 on);
 static void process_grid_press(u8 x, u8 y, u8 on);
 static void process_grid_param(u8 x, u8 y, u8 on);
 static void process_grid_matrix(u8 x, u8 y, u8 on);
+static void process_grid_i2c(u8 x, u8 y, u8 on);
 static void process_grid_presets(u8 x, u8 y, u8 on);
 
 static void render_param_page(void);
 static void render_matrix_page(void);
+static void render_i2c_page(void);
 static void render_presets(void);
 
 static char* itoa(int value, char* result, int base);
@@ -459,7 +462,7 @@ void update_matrix(void) {
     u32 v;
     // value * (max - min) / 120 + param
 
-    speed_mod = counts[0] ? (matrix_values[0] * 198) / (12 * MATRIXMAXSTATE * counts[0]) : 0;
+    // speed_mod = counts[0] ? (matrix_values[0] * 198) / (12 * MATRIXMAXSTATE * counts[0]) : 0;
     
     v = p.config.length;
     if (counts[1]) {
@@ -652,6 +655,8 @@ void update_display() {
     draw_str(s, 4, 9, 0);
     itoa(p.config.shift, s, 10);
     draw_str(s, 5, 9, 0);
+    itoa(p.config.space, s, 10);
+    draw_str(s, 5, 9, 0);
     
     refresh_screen();
 }
@@ -696,29 +701,29 @@ void process_grid_press(u8 x, u8 y, u8 on) {
             case 1:
                 select_matrix(1);
                 break;
-            case 6:
-                select_param(PARAM_LEN);
-                break;
-            case 7:
-                select_param(PARAM_ALGOX);
-                break;
-            case 8:
-                select_param(PARAM_ALGOY);
-                break;
-            case 9:
-                select_param(PARAM_SHIFT);
-                break;
-            case 10:
-                select_param(PARAM_SPACE);
-                break;
-            case 11:
-                select_param(PARAM_GATEL);
-                break;
-            case 14:
+            case 2:
                 select_param(PARAM_TRANS);
                 break;
+            case 4:
+                select_param(PARAM_LEN);
+                break;
+            case 5:
+                select_param(PARAM_ALGOX);
+                break;
+            case 6:
+                select_param(PARAM_ALGOY);
+                break;
+            case 7:
+                select_param(PARAM_SHIFT);
+                break;
+            case 8:
+                select_param(PARAM_SPACE);
+                break;
+            case 9:
+                select_param(PARAM_GATEL);
+                break;
             case 15:
-                toggle_transpose_seq();
+                select_page(PAGE_I2C);
             default:
                 break;
         }
@@ -729,13 +734,20 @@ void process_grid_press(u8 x, u8 y, u8 on) {
         toggle_matrix_mute(0);
         return;
     }
+
     if (y == 1 && x == 1 && on) {
         toggle_matrix_mute(1);
         return;
     }
 
+    if (y == 1 && x == 2 && on) {
+        toggle_transpose_seq();
+        return;
+    }
+
     if (s.page == PAGE_PARAM) process_grid_param(x, y, on);
     else if (s.page == PAGE_MATRIX) process_grid_matrix(x, y, on);
+    else if (s.page == PAGE_I2C) process_grid_i2c(x, y, on);
 }
     
 void render_grid() {
@@ -762,17 +774,22 @@ void render_grid() {
     set_grid_led(1, 0, s.page == PAGE_MATRIX && s.mi == 1 ? on : off);
     set_grid_led(0, 1, p.matrix_on[0] ? off : off - 4);
     set_grid_led(1, 1, p.matrix_on[1] ? off : off - 4);
-    set_grid_led(6, 0, s.page == PAGE_PARAM && s.param == PARAM_LEN ? on : off);
-    set_grid_led(7, 0, s.page == PAGE_PARAM && s.param == PARAM_ALGOX ? on : off);
-    set_grid_led(8, 0, s.page == PAGE_PARAM && s.param == PARAM_ALGOY ? on : off);
-    set_grid_led(9, 0, s.page == PAGE_PARAM && s.param == PARAM_SHIFT ? on : off);
-    set_grid_led(10, 0, s.page == PAGE_PARAM && s.param == PARAM_SPACE ? on : off);
-    set_grid_led(11, 0, s.page == PAGE_PARAM && s.param == PARAM_GATEL ? on : off);
-    set_grid_led(14, 0, s.page == PAGE_PARAM && s.param == PARAM_TRANS ? on : off);
-    set_grid_led(15, 0, p.transpose_seq_on ? on : off);
+    
+    set_grid_led(2, 0, s.page == PAGE_PARAM && s.param == PARAM_TRANS ? on : off);
+    set_grid_led(2, 1, p.transpose_seq_on ? on : off);
+    
+    set_grid_led(4, 0, s.page == PAGE_PARAM && s.param == PARAM_LEN ? on : off);
+    set_grid_led(5, 0, s.page == PAGE_PARAM && s.param == PARAM_ALGOX ? on : off);
+    set_grid_led(6, 0, s.page == PAGE_PARAM && s.param == PARAM_ALGOY ? on : off);
+    set_grid_led(7, 0, s.page == PAGE_PARAM && s.param == PARAM_SHIFT ? on : off);
+    set_grid_led(8, 0, s.page == PAGE_PARAM && s.param == PARAM_SPACE ? on : off);
+    set_grid_led(9, 0, s.page == PAGE_PARAM && s.param == PARAM_GATEL ? on : off);
+    
+    set_grid_led(15, 0, s.page == PAGE_I2C ? on : off);
     
     if (s.page == PAGE_PARAM) render_param_page();
     else if (s.page == PAGE_MATRIX) render_matrix_page();
+    else if (s.page == PAGE_I2C) render_i2c_page();
 }
 
 void process_grid_presets(u8 x, u8 y, u8 on) {
@@ -788,31 +805,18 @@ void process_grid_presets(u8 x, u8 y, u8 on) {
         load_preset_and_exit(x - 4);
         return;
     }
-    
-    if (x == 15) {
-        if (y == 2)
-            select_i2c_device(VOICE_ER301);
-        else if (y == 3)
-            select_i2c_device(VOICE_JF);
-        else if (y == 4)
-            select_i2c_device(VOICE_TXO_NOTE);
-    }
 }
 
 void render_presets() {
-    u8 on = 10, off = 4;
+    u8 on = 10;
     
     for (u8 x = 4; x < 12; x++)
-        set_grid_led(x, 2, off + (x & 1) * 4);
+        set_grid_led(x, 2, on);
         
     for (u8 x = 4; x < 12; x++)
-        set_grid_led(x, 5, off + (x & 1) * 4);
+        set_grid_led(x, 5, on);
 
     set_grid_led(selected_preset + 4, 5, 15);
-    
-    set_grid_led(15, 2, s.i2c_device == VOICE_ER301 ? on : off);
-    set_grid_led(15, 3, s.i2c_device == VOICE_JF ? on : off);
-    set_grid_led(15, 4, s.i2c_device == VOICE_TXO_NOTE ? on : off);
 }
 
 void process_grid_param(u8 x, u8 y, u8 on) {
@@ -1000,9 +1004,10 @@ void process_grid_matrix(u8 x, u8 y, u8 on) {
         return;
     }
 
-    if (x == 4) x = 0;
-    else if (x > 5 && x < 12) x -= 5;
-    else if (x > 12) x -= 6;
+    // if (x == 4) x = 0;
+    if (x > 3 && x < 10) x -= 3;
+    else if (x > 10 && x < 14) x -= 4;
+    else if (x == 15) x = 10;
     else return;
     
     if (p.matrix_mode == MATRIXMODEPERF || on) toggle_matrix_cell(y - 1, x);
@@ -1019,11 +1024,33 @@ void render_matrix_page() {
     for (u8 x = 0; x < MATRIXOUTS; x++)
         for (u8 y = 0; y < MATRIXINS; y++) {
             u8 _x;
-            if (x == 0) _x = 4;
-            else if (x < 7) _x = x + 5;
-            else _x = x + 6;
+            if (x == 0) continue; // _x = 4; 
+            if (x < 7) _x = x + 3;
+            else if (x < 10) _x = x + 4;
+            else if (x = 10) _x = 15;
+            else continue;
             set_grid_led(_x, y + 1, p.matrix[s.mi][y][x] * d + a);
         }
+}
+
+void process_grid_i2c(u8 x, u8 y, u8 on) {
+    if (!on) return;
+    
+    if (y == 2) {
+        if (x == 6)
+            select_i2c_device(VOICE_ER301);
+        else if (x == 7)
+            select_i2c_device(VOICE_JF);
+        else if (x == 8)
+            select_i2c_device(VOICE_TXO_NOTE);
+    }
+}
+
+void render_i2c_page() {
+    u8 on = 15, off = 4;
+    set_grid_led(6, 2, s.i2c_device == VOICE_ER301 ? on : off);
+    set_grid_led(7, 2, s.i2c_device == VOICE_JF ? on : off);
+    set_grid_led(8, 2, s.i2c_device == VOICE_TXO_NOTE ? on : off);
 }
 
 void render_arc() { }
@@ -1078,8 +1105,6 @@ char* itoa(int value, char* result, int base) {
 
 /*
 
-- i2c parameters in mod matrix
-
 -- not tested:
 
 - i2c config
@@ -1090,6 +1115,7 @@ char* itoa(int value, char* result, int base) {
 
 -- future
   
+- i2c parameters in mod matrix
 - clock / reset outputs
 - MIDI keyboard support
 - visualize values for algox/algoy

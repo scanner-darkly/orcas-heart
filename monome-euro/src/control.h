@@ -15,7 +15,7 @@
 // ----------------------------------------------------------------------------
 // firmware dependent stuff starts here
 
-#define MATRIXOUTS 10
+#define MATRIXOUTS 11
 #define MATRIXINS   7
 #define MATRIXCOUNT 2
 #define TRANSSEQLEN 8
