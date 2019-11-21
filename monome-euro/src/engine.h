@@ -10,7 +10,7 @@
 #define SCALELEN 12
 #define SCALECOUNT 2
 
-#define NOTECOUNT 6
+#define NOTECOUNT 8
 #define MODCOUNT 4
 
 
