@@ -47,6 +47,8 @@ typedef struct {
     u8 matrix[MATRIXCOUNT][MATRIXINS][MATRIXOUTS];
     u8 matrix_on[MATRIXCOUNT];
     u8 matrix_mode;
+    
+    u8 voice_on[NOTECOUNT];
 } preset_data_t;
 
 

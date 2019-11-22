@@ -249,7 +249,7 @@ void calculateNote(int n) {
    
 void calculateNextNote(int n) {
     uint8_t mask = gatePresets[engine.config.algoY >> 3][n];
-    if (mask == 0) mask = 0b0101;
+    if (mask == 0) mask = 0b1111;
     for (uint8_t i = 0; i < n; i++) mask = ((mask & 1) << 3) | (mask >> 1);
    
     uint8_t gate = 0;

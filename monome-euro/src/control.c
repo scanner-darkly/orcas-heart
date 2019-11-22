@@ -19,11 +19,13 @@
 
 #define SPEEDCYCLE 4
 #define SPEEDBUTTONCYCLE 10
+#define CLOCKOUTWIDTH 10
 
 #define SPEEDTIMER 0
 #define SPEEDBUTTONTIMER 1
 #define CLOCKTIMER 2
-#define GATETIMER  3
+#define CLOCKOUTTIMER 3
+#define GATETIMER  4
 
 #define PAGE_PARAM  0
 #define PAGE_MATRIX 1
@@ -62,10 +64,10 @@ static void toggle_preset_page(void);
 static void save_preset(void);
 static void save_preset_and_confirm(void);
 static void load_preset(u8 preset);
-static void load_preset_and_exit(u8 preset);
 
 static void set_up_i2c(void);
 static void select_i2c_device(u8 device);
+static void toggle_voice_on(u8 voice);
 
 static void update_speed_from_knob(void);
 static void update_speed_from_buttons(void);
@@ -78,6 +80,7 @@ static void update_matrix(void);
 static void output_notes(void);
 static void stop_note(u8 n);
 static void output_mods(void);
+static void output_clock(void);
 
 static void toggle_scale(u8 manual);
 static void toggle_scaleA_octave(void);
@@ -168,6 +171,8 @@ void init_presets(void) {
                 p.matrix[i][j][k] = 0;
     }
     p.matrix_mode = MATRIXMODEEDIT;
+    
+    for (u8 i = 0; i < NOTECOUNT; i++) p.voice_on[i] = 1;
 
     for (u8 i = 0; i < get_preset_count(); i++)
         store_preset_to_flash(i, &meta, &p);
@@ -248,6 +253,8 @@ void process_event(u8 event, u8 *data, u8 length) {
                 update_speed_from_buttons();
             } else if (data[0] == CLOCKTIMER) {
                 if (!is_external_clock_connected()) step();
+            } else if (data[0] == CLOCKOUTTIMER) {
+                set_clock_output(0);
             } else if (data[0] >= GATETIMER) {
                 stop_note(data[0] - GATETIMER);
             }
@@ -291,7 +298,7 @@ void toggle_preset_page() {
 void save_preset() {
     store_preset_to_flash(selected_preset, &meta, &p);
     store_shared_data_to_flash(&s);
-    store_preset_index(0);
+    store_preset_index(selected_preset);
 }
 
 void save_preset_and_confirm() {
@@ -306,15 +313,9 @@ void load_preset(u8 preset) {
     load_preset_from_flash(selected_preset, &p);
 
     initEngine(&p.config);
-    update_timer_interval(CLOCKTIMER, p.speed);
+    update_timer_interval(CLOCKTIMER, 60000 / p.speed);
     updateScales(p.scale_buttons);
 
-    refresh_grid();
-}
-
-void load_preset_and_exit(u8 preset) {
-    load_preset(preset);
-    is_presets = 0;
     refresh_grid();
 }
 
@@ -345,6 +346,12 @@ void set_up_i2c() {
 void select_i2c_device(u8 device) {
     s.i2c_device = device;
     set_up_i2c();
+    refresh_grid();
+}
+
+void toggle_voice_on(u8 voice) {
+    p.voice_on[voice] = !p.voice_on[voice];
+    if (!p.voice_on[voice]) note(voice, getNote(voice), 0, 0);
     refresh_grid();
 }
 
@@ -379,6 +386,7 @@ void step() {
     transpose_step();
     output_notes();
     output_mods();
+    output_clock();
     update_matrix();
     refresh_grid();
 }
@@ -407,7 +415,7 @@ void output_notes(void) {
                 found = 1;
                 break;
             }
-        if (getGateChanged(n) && !found) {
+        if (p.voice_on[n] && getGateChanged(n) && !found) {
             note(n, getNote(n) + trans, getModCV(0) * 100 + 6000, getGate(n));
             add_timed_event(GATETIMER + n, gate_length_mod, 0);
         }
@@ -420,6 +428,11 @@ void stop_note(u8 n) {
 
 void output_mods(void) {
     // TODO
+}
+
+void output_clock() {
+    add_timed_event(CLOCKOUTTIMER, CLOCKOUTWIDTH, 0);
+    set_clock_output(1);
 }
 
 void update_matrix(void) {
@@ -515,11 +528,11 @@ void update_matrix(void) {
     gate_length_mod += p.gate_length;
     if (gate_length_mod < 100) gate_length_mod = 100; else if (gate_length_mod > 4000) gate_length_mod = 4000;    
     
-    if (matrix_values[7] > prevScale) toggle_scale(0);
+    if (matrix_values[7] > prevScale && matrix_values[7]) toggle_scale(0);
     
-    if (matrix_values[8] > prevOctaveA) toggle_scaleA_octave();
+    if (matrix_values[8] > prevOctaveA && matrix_values[8]) toggle_scaleA_octave();
 
-    if (matrix_values[9] > prevOctaveB) toggle_scaleB_octave();
+    if (matrix_values[9] > prevOctaveB && matrix_values[9]) toggle_scaleB_octave();
     
     refresh_grid();
 }
@@ -694,6 +707,7 @@ void process_gate(u8 index, u8 on) {
 
 void process_grid_press(u8 x, u8 y, u8 on) {
     if (is_preset_saved) {
+        if (!on) return;
         is_preset_saved = is_presets = 0;
         refresh_grid();
         return;
@@ -788,7 +802,7 @@ void render_grid() {
     set_grid_led(1, 1, p.matrix_on[1] ? off : off - 4);
     
     set_grid_led(2, 0, s.page == PAGE_PARAM && s.param == PARAM_TRANS ? on : off);
-    set_grid_led(2, 1, p.transpose_seq_on ? on : off);
+    set_grid_led(2, 1, p.transpose_seq_on ? off : off - 4);
     
     set_grid_led(4, 0, s.page == PAGE_PARAM && s.param == PARAM_LEN ? on : off);
     set_grid_led(5, 0, s.page == PAGE_PARAM && s.param == PARAM_ALGOX ? on : off);
@@ -807,28 +821,32 @@ void render_grid() {
 void process_grid_presets(u8 x, u8 y, u8 on) {
     if (!on) return;
     
-    if (y == 2 && x > 3 && x < 12) {
-        selected_preset = x - 4;
+    if (y > 0 &&  y < 3 && x > 3 && x < 12) {
+        selected_preset = x - 4 + (y - 1) * 8;
         save_preset_and_confirm();
         return;
     }
 
-    if (y == 5 && x > 3 && x < 12) {
-        load_preset_and_exit(x - 4);
+    if (y > 4 && y < 7 && x > 3 && x < 12) {
+        load_preset(x - 4 + (y - 5) * 8);
         return;
     }
 }
 
 void render_presets() {
-    u8 on = 10;
+    u8 on = 7;
     
-    for (u8 x = 4; x < 12; x++)
+    for (u8 x = 4; x < 12; x++) {
+        set_grid_led(x, 1, on);
         set_grid_led(x, 2, on);
+    }
         
-    for (u8 x = 4; x < 12; x++)
+    for (u8 x = 4; x < 12; x++) {
         set_grid_led(x, 5, on);
+        set_grid_led(x, 6, on);
+    }
 
-    set_grid_led(selected_preset + 4, 5, 15);
+    set_grid_led((selected_preset % 8) + 4, 5 + selected_preset / 8, 15);
 }
 
 void process_grid_param(u8 x, u8 y, u8 on) {
@@ -1028,7 +1046,7 @@ void process_grid_matrix(u8 x, u8 y, u8 on) {
 void render_matrix_page() {
     set_grid_led(0, 7, 10);
     set_grid_led(1, 7, 10);
-    set_grid_led(0, 4, p.matrix_mode == MATRIXMODEEDIT ? 10 : 4);
+    set_grid_led(0, 4, p.matrix_mode == MATRIXMODEEDIT ? 4 : 10);
     
     u8 d = 12 / (MATRIXMAXSTATE + 1);
     u8 a = p.matrix_on[s.mi] ? 3 : 2;
@@ -1058,6 +1076,10 @@ void process_grid_i2c(u8 x, u8 y, u8 on) {
         else if (x == 9)
             select_i2c_device(VOICE_TXO_NOTE);
     }
+    
+    if (y == 7 && x > 3 && x < 12) {
+        toggle_voice_on(x - 4);
+    }
 }
 
 void render_i2c_page() {
@@ -1066,6 +1088,10 @@ void render_i2c_page() {
     set_grid_led(7, 2, s.i2c_device == VOICE_ER301 ? on : off);
     set_grid_led(8, 2, s.i2c_device == VOICE_JF ? on : off);
     set_grid_led(9, 2, s.i2c_device == VOICE_TXO_NOTE ? on : off);
+    
+    for (u8 i = 0; i < 8; i++) {
+        set_grid_led(i + 4, 7, p.voice_on[i] ? on : off);
+    }
 }
 
 void render_arc() { }
@@ -1120,20 +1146,30 @@ char* itoa(int value, char* result, int base) {
 
 /*
 
+- adjust brightness levels
+- scale mods should only be on positive edge
+- loading presets should stay on preset page
+- increase presets to 16
+- floppy icon after saving a preset should be displayed until a button is pressed
+- way to mute voices
+- currenly selected preset not saved/loaded properly
+- fix speed not loading from presets on ansible
+
 -- not tested:
 
+- clock output
 - additional gate inputs on ansible/teletype
 - gate length
 
 -- future
-  
-- way to mute voices
-- clock / reset outputs
+
+- edit scale notes / microtonal scales
 - move mod matrix to engine
-- matrix on/off shortcut
+- swing  
+- matrix on/off fast forwarded
 - i2c parameters in mod matrix
 - visualize values for algox/algoy
-- switch outputs between notes/mod cvs
+- switch outputs between notes/mod cvs/clock&reset
 
 - MIDI keyboard support
 - toggle between directly mapped voices / first available
