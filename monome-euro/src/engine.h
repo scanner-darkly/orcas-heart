@@ -5,7 +5,7 @@
 #pragma once
 #include "types.h"
 
-#define TRACKCOUNT 6
+#define TRACKCOUNT 8
 
 #define SCALELEN 12
 #define SCALECOUNT 2

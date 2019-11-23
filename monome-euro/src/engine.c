@@ -40,7 +40,7 @@ uint8_t spacePresets[SPACEPRESETCOUNT] = {
     0b1011, 0b1101, 0b1110, 0b1111
 };
 
-uint16_t weights[TRACKCOUNT] = {1, 2, 4, 7, 5, 3};
+uint16_t weights[TRACKCOUNT] = {1, 2, 4, 7, 5, 3, 4, 2};
 
 engine_t engine;
 
@@ -194,7 +194,7 @@ void updateTrackParameters() {
     engine.phase[0] = engine.config.algoX >> 5;
    
     for (uint8_t i = 1; i < TRACKCOUNT; i++) {
-        if (engine.config.algoX & (1 << (i + 2))) 
+        if (engine.config.algoX & (1 << ((i & 3) + 2))) 
             engine.divisor[i] = engine.divisor[i-1] + 1; 
         else 
             engine.divisor[i] = engine.divisor[i-1] - 1;
@@ -233,7 +233,7 @@ void calculateNote(int n) {
     uint8_t mask = engine.config.algoY >> 3;
 
     for (uint8_t j = 0; j < TRACKCOUNT; j++) {
-        if (engine.trackOn[j] && (mask & (1 << j))) note += engine.weightOn[j];
+        if (engine.trackOn[j] && (mask & (1 << (j & 3)))) note += engine.weightOn[j];
     }
 
     if (engine.config.algoY & 1) note += engine.weightOn[(n + 1) % TRACKCOUNT];
@@ -254,7 +254,7 @@ void calculateNextNote(int n) {
    
     uint8_t gate = 0;
     for (uint8_t j = 0; j < TRACKCOUNT; j++) {
-        if (engine.trackOn[j] && (mask & (1 << j))) gate = 1;
+        if (engine.trackOn[j] && (mask & (1 << (j & 3)))) gate = 1;
         // if (mask & (1 << j)) gate = 1;
     }
 

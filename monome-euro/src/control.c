@@ -1146,25 +1146,18 @@ char* itoa(int value, char* result, int base) {
 
 /*
 
-- adjust brightness levels
-- scale mods should only be on positive edge
-- loading presets should stay on preset page
-- increase presets to 16
-- floppy icon after saving a preset should be displayed until a button is pressed
-- way to mute voices
-- currenly selected preset not saved/loaded properly
-- fix speed not loading from presets on ansible
 
 -- not tested:
 
 - clock output
 - additional gate inputs on ansible/teletype
 - gate length
+- fix speed not loading from presets on ansible
 
 -- future
 
-- edit scale notes / microtonal scales
 - move mod matrix to engine
+- edit scale notes / microtonal scales
 - swing  
 - matrix on/off fast forwarded
 - i2c parameters in mod matrix
