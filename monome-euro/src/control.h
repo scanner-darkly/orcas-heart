@@ -36,8 +36,11 @@ typedef struct {
 
 typedef struct {
     engine_config_t config;
+    
     u16 speed;
     u16 gate_length;
+    u8 note_delay[NOTECOUNT];
+    
     s8 transpose[TRANSSEQLEN];
     u8 transpose_seq_on;
 
@@ -48,7 +51,7 @@ typedef struct {
     u8 matrix_on[MATRIXCOUNT];
     u8 matrix_mode;
     
-    u8 voice_on[NOTECOUNT];
+    u8 voice_vol[NOTECOUNT];
 } preset_data_t;
 
 
