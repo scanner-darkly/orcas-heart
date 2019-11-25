@@ -21,6 +21,8 @@
 #define SPEEDBUTTONCYCLE 10
 #define CLOCKOUTWIDTH 10
 
+#define MAXVOLUMELEVEL 5
+
 #define SPEEDTIMER 0
 #define SPEEDBUTTONTIMER 1
 #define CLOCKTIMER 2
@@ -62,8 +64,8 @@ s32 matrix_values[MATRIXOUTS];
 u8 trans_step, trans_sel, reset_phase;
 u8 is_presets, is_preset_saved;
 
-u8 notes_pitch[NOTECOUNT];
-u8 notes_vol[NOTECOUNT];
+u16 notes_pitch[NOTECOUNT];
+u16 notes_vol[NOTECOUNT];
 u8 notes_on[NOTECOUNT];
 u8 time_shift_counter;
 
@@ -188,7 +190,7 @@ void init_presets(void) {
     }
     p.matrix_mode = MATRIXMODEEDIT;
     
-    for (u8 i = 0; i < NOTECOUNT; i++) p.voice_vol[i] = 4;
+    for (u8 i = 0; i < NOTECOUNT; i++) p.voice_vol[i] = MAXVOLUMELEVEL;
 
     for (u8 i = 0; i < get_preset_count(); i++)
         store_preset_to_flash(i, &meta, &p);
@@ -349,7 +351,7 @@ void set_up_i2c() {
             for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_JF, i, 1);
             break;
         case VOICE_ER301:
-            for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_ER301, i, 1);
+            for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_ER301, i + 1, 1);
             break;
         case VOICE_TXO_NOTE:
             for (u8 i = 0; i < NOTECOUNT; i++) {
@@ -1126,7 +1128,7 @@ void process_grid_note_delay(u8 x, u8 y, u8 on) {
 
 void render_note_delay_page() {
     for (u8 x = 0; x < 16; x++)
-        for (u8 y = 0; y < 4; y++)
+        for (u8 y = 4; y < 8; y++)
             set_grid_led(x, y, x == 0 || x == 8 ? 8 : 3);
         
     for (u8 n = 0; n < 4; n++)
@@ -1139,32 +1141,32 @@ void render_note_delay_page() {
 void process_grid_i2c(u8 x, u8 y, u8 on) {
     if (!on) return;
     
-    if (y == 2) {
-        if (x == 6)
+    if (x == 15) {
+        if (y == 2)
             select_i2c_device(VOICE_CV_GATE);
-        else if (x == 7)
+        else if (y == 3)
             select_i2c_device(VOICE_ER301);
-        else if (x == 8)
+        else if (y == 4)
             select_i2c_device(VOICE_JF);
-        else if (x == 9)
+        else if (y == 5)
             select_i2c_device(VOICE_TXO_NOTE);
     }
     
-    if (y > 2 && x > 3 && x < 12) {
+    if (y > (6 - MAXVOLUMELEVEL) && x > 3 && x < 12) {
         set_voice_vol(x - 4, 7 - y);
     }
 }
 
 void render_i2c_page() {
     u8 on = 15, off = 4;
-    set_grid_led(6, 2, s.i2c_device == VOICE_CV_GATE ? on : off);
-    set_grid_led(7, 2, s.i2c_device == VOICE_ER301 ? on : off);
-    set_grid_led(8, 2, s.i2c_device == VOICE_JF ? on : off);
-    set_grid_led(9, 2, s.i2c_device == VOICE_TXO_NOTE ? on : off);
+    set_grid_led(15, 2, s.i2c_device == VOICE_CV_GATE ? on : off);
+    set_grid_led(15, 3, s.i2c_device == VOICE_ER301 ? on : off);
+    set_grid_led(15, 4, s.i2c_device == VOICE_JF ? on : off);
+    set_grid_led(15, 5, s.i2c_device == VOICE_TXO_NOTE ? on : off);
     
     off--;
     for (u8 i = 0; i < 8; i++) {
-        for (u8 y = 0; y < 5; y++)
+        for (u8 y = 0; y < MAXVOLUMELEVEL + 1; y++)
             set_grid_led(i + 4, 7 - y, p.voice_vol[i] == y ? on : (p.voice_vol[i] > y ? off : 0));
     }
 }
@@ -1221,13 +1223,17 @@ char* itoa(int value, char* result, int base) {
 
 /*
 
+- check timing with teletype
 - timing effects
-- volume for each voice instead of mute
 - ability to select any 2 parameters for editing by pressing 2 menu buttons
+- improve teletype display
+- only show available voices for just friends on i2c and delay pages
+- bottom row on i2c page should work as mute on/off
 
 -- not tested:
 
 - note delays
+- volume for each voice instead of mute
 
 - clock output
 - additional gate inputs on ansible/teletype
