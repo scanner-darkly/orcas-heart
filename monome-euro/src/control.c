@@ -78,6 +78,7 @@ static void load_preset(u8 preset);
 
 static void set_up_i2c(void);
 static void select_i2c_device(u8 device);
+static void toggle_voice_on(u8 voice);
 static void set_voice_vol(u8 voice, u8 vol);
 
 static void update_speed_from_knob(void);
@@ -190,7 +191,10 @@ void init_presets(void) {
     }
     p.matrix_mode = MATRIXMODEEDIT;
     
-    for (u8 i = 0; i < NOTECOUNT; i++) p.voice_vol[i] = MAXVOLUMELEVEL;
+    for (u8 i = 0; i < NOTECOUNT; i++) {
+        p.voice_vol[i] = MAXVOLUMELEVEL;
+        p.voice_on[i] = 1;
+    }
 
     for (u8 i = 0; i < get_preset_count(); i++)
         store_preset_to_flash(i, &meta, &p);
@@ -370,20 +374,25 @@ void select_i2c_device(u8 device) {
     refresh_grid();
 }
 
-void set_voice_vol(u8 voice, u8 vol) {
-    p.voice_vol[voice] = vol;
-    if (!p.voice_vol[voice]) {
+void toggle_voice_on(u8 voice) {
+    p.voice_on[voice] = !p.voice_on[voice];
+    if (!p.voice_on[voice]) {
         stop_timed_event(NOTEDELAYTIMER + voice);
         stop_timed_event(GATETIMER + voice);
-        note(voice, getNote(voice), 0, 0);
+        note(voice, getNote(voice, 0), 0, 0);
     }
+    refresh_grid();
+}
+
+void set_voice_vol(u8 voice, u8 vol) {
+    p.voice_vol[voice] = vol;
     refresh_grid();
 }
 
 void update_speed_from_knob() {
     if (get_knob_count() == 0) return;
     
-    speed = ((get_knob_value(0) * 1980) >> 16) + 20;
+    speed = (((get_knob_value(0) * 1980) >> 18) << 2) + 20;
     update_speed();
 }
 
@@ -433,24 +442,24 @@ void output_notes(void) {
     u8 found;
     
     for (u8 n = 0; n < NOTECOUNT; n++) {
-        prev_notes[n] = getNote(n);
+        prev_notes[n] = getNote(n, p.note_delay[n]);
         found = 0;
         for (u8 i = 0; i < n; i++)
             if (prev_notes[n] == prev_notes[i] + 1 || prev_notes[n] == prev_notes[i] - 1) {
                 found = 1;
                 break;
             }
-        if (p.voice_vol[n] && getGateChanged(n) && !found) {
-            notes_pitch[n] = getNote(n) + trans;
-            notes_vol[n] = p.voice_vol[n] ? getModCV(0) * 100 + 1000 * (p.voice_vol[n] + 2) : 0;
-            notes_on[n] = getGate(n);
-            if (p.note_delay[n]) {
-                u32 delay = (60000 * p.note_delay[n]) / (p.speed * NOTECOUNT);
-                if (!delay) delay = 1;
-                add_timed_event(NOTEDELAYTIMER + n, delay, 0);
-            } else {
+        if (p.voice_on[n] && getGateChanged(n, p.note_delay[n]) && !found) {
+            notes_pitch[n] = getNote(n, p.note_delay[n]) + trans;
+            notes_vol[n] = getModCV(0) * 100 + 1000 * (p.voice_vol[n] + 1);
+            notes_on[n] = getGate(n, p.note_delay[n]);
+            //if (p.note_delay[n]) {
+            //    u32 delay = (60000 * p.note_delay[n]) / (p.speed * NOTECOUNT);
+            //    if (!delay) delay = 1;
+            //    add_timed_event(NOTEDELAYTIMER + n, delay, 0);
+            //} else {
                 output_note(n, notes_pitch[n], notes_vol[n], notes_on[n]);
-            }
+            //}
         }
     }
 }
@@ -490,7 +499,7 @@ void update_matrix(void) {
         for (u8 i = 0; i < 4; i++) {
             if (p.matrix_on[0]) {
                 counts[m] += p.matrix[0][i][m];
-                matrix_values[m] += getNote(i) * p.matrix[0][i][m];
+                matrix_values[m] += getNote(i, p.note_delay[i]) * p.matrix[0][i][m];
             }
             
             if (p.matrix_on[1]) {
@@ -502,7 +511,7 @@ void update_matrix(void) {
         for (u8 i = 0; i < 2; i++) {
             if (p.matrix_on[0]) {
                 counts[m] += p.matrix[0][i + 4][m];
-                matrix_values[m] += getGate(i) * p.matrix[0][i + 4][m] * MATRIXGATEWEIGHT;
+                matrix_values[m] += getGate(i, p.note_delay[i]) * p.matrix[0][i + 4][m] * MATRIXGATEWEIGHT;
             }
             
             if (p.matrix_on[1]) {
@@ -1116,26 +1125,44 @@ void process_grid_note_delay(u8 x, u8 y, u8 on) {
     if (!on) return;
     
     if (y < 4) return;
+    if (s.i2c_device == VOICE_JF && y < 5) return;
     
-    u8 n = y - 4;
-    if (x > 7) {
-        n += 4;
-        x -= 8;
-    }
+    u8 n;
+    if (s.i2c_device == VOICE_JF)
+        n = x > 7 ? y - 2 : y - 5;
+    else
+        n = x > 7 ? y : y - 4;
     
+    if (x > 7) x -= 8;
     set_note_delay(n, x);
 }
 
 void render_note_delay_page() {
-    for (u8 x = 0; x < 16; x++)
-        for (u8 y = 4; y < 8; y++)
-            set_grid_led(x, y, x == 0 || x == 8 ? 8 : 3);
+    if (s.i2c_device == VOICE_JF) {
         
-    for (u8 n = 0; n < 4; n++)
-        set_grid_led(p.note_delay[n], n + 4, 15);
+        for (u8 x = 0; x < 16; x++)
+            for (u8 y = 5; y < 8; y++)
+                set_grid_led(x, y, x == 0 || x == 8 ? 8 : 3);
+            
+        for (u8 n = 0; n < 3; n++)
+            set_grid_led(p.note_delay[n], n + 5, 15);
 
-    for (u8 n = 4; n < 8; n++)
-        set_grid_led(p.note_delay[n] + 8, n, 15);
+        for (u8 n = 3; n < 6; n++)
+            set_grid_led(p.note_delay[n] + 8, n + 2, 15);
+        
+    } else {
+        
+        for (u8 x = 0; x < 16; x++)
+            for (u8 y = 4; y < 8; y++)
+                set_grid_led(x, y, x == 0 || x == 8 ? 8 : 3);
+            
+        for (u8 n = 0; n < 4; n++)
+            set_grid_led(p.note_delay[n], n + 4, 15);
+
+        for (u8 n = 4; n < 8; n++)
+            set_grid_led(p.note_delay[n] + 8, n, 15);
+        
+    }
 }
 
 void process_grid_i2c(u8 x, u8 y, u8 on) {
@@ -1152,8 +1179,20 @@ void process_grid_i2c(u8 x, u8 y, u8 on) {
             select_i2c_device(VOICE_TXO_NOTE);
     }
     
-    if (y > (6 - MAXVOLUMELEVEL) && x > 3 && x < 12) {
-        set_voice_vol(x - 4, 7 - y);
+    if (y == 7) {
+        if (s.i2c_device == VOICE_JF) {
+            if (x > 4 && x < 11) toggle_voice_on(x - 5);
+        } else {
+            if (x > 3 && x < 12) toggle_voice_on(x - 4);
+        }
+    }
+    
+    if (y > 1) {
+        if (s.i2c_device == VOICE_JF) {
+            if (x > 4 && x < 11) set_voice_vol(x - 5, 7 - y);
+        } else {
+            if (x > 3 && x < 12) set_voice_vol(x - 4, 7 - y);
+        }
     }
 }
 
@@ -1165,9 +1204,12 @@ void render_i2c_page() {
     set_grid_led(15, 5, s.i2c_device == VOICE_TXO_NOTE ? on : off);
     
     off--;
-    for (u8 i = 0; i < 8; i++) {
+    u8 d = s.i2c_device == VOICE_JF ? 1 : 0;
+    u8 m = s.i2c_device == VOICE_JF ? 6 : 8;
+    
+    for (u8 i = 0; i < m; i++) {
         for (u8 y = 0; y < MAXVOLUMELEVEL + 1; y++)
-            set_grid_led(i + 4, 7 - y, p.voice_vol[i] == y ? on : (p.voice_vol[i] > y ? off : 0));
+            set_grid_led(i + 4 + d, 7 - y, p.voice_vol[i] == y ? on : (p.voice_vol[i] > y ? off : 0));
     }
 }
 
@@ -1224,16 +1266,17 @@ char* itoa(int value, char* result, int base) {
 /*
 
 - check timing with teletype
-- timing effects
+- note delays by full clock
+
 - ability to select any 2 parameters for editing by pressing 2 menu buttons
 - improve teletype display
-- only show available voices for just friends on i2c and delay pages
-- bottom row on i2c page should work as mute on/off
 
 -- not tested:
 
 - note delays
 - volume for each voice instead of mute
+- bottom row on i2c page should work as mute on/off
+- only show available voices for just friends on delay and volume pages
 
 - clock output
 - additional gate inputs on ansible/teletype

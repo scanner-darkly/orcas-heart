@@ -52,6 +52,7 @@ typedef struct {
     u8 matrix_mode;
     
     u8 voice_vol[NOTECOUNT];
+    u8 voice_on[NOTECOUNT];
 } preset_data_t;
 
 

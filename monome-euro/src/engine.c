@@ -50,6 +50,7 @@ static void calculateNotes(void);
 static void calculateMods(void);
 static void calculateNote(int n);
 static void calculateNextNote(int n);
+static void pushHistory(void);
 
 
 // ----------------------------------------------------------------------------
@@ -65,6 +66,7 @@ void initEngine(engine_config_t *config) {
     reset();
     updateTrackParameters();
     updateTrackValues();
+    pushHistory();
     calculateNotes();
     calculateMods();
 }
@@ -128,6 +130,7 @@ void clock() {
     updateCounters();
     updateTrackParameters();
     updateTrackValues();
+    pushHistory();
     calculateNotes();
     calculateMods();
 }
@@ -154,16 +157,16 @@ uint8_t getScaleCount(uint8_t scale) {
     return engine.scaleCount[scale];
 }
 
-uint8_t getNote(uint8_t index) {
-    return engine.notes[index];
+uint8_t getNote(uint8_t index, u8 generation) {
+    return engine.notes[index][generation];
 }
 
-uint8_t getGate(uint8_t index) {
-    return engine.gateOn[index];
+uint8_t getGate(uint8_t index, u8 generation) {
+    return engine.gateOn[index][generation];
 }
 
-uint8_t getGateChanged(uint8_t index) {
-    return engine.gateChanged[index];
+uint8_t getGateChanged(uint8_t index, u8 generation) {
+    return engine.gateChanged[index][generation];
 }
 
 uint16_t getModCV(uint8_t index) {
@@ -212,6 +215,15 @@ void updateTrackValues() {
     }
 }
 
+void pushHistory(void) {
+    for (uint8_t n = 0; n < NOTECOUNT; n++)
+        for (uint8_t h = 1; h < HISTORYCOUNT; h++) {
+            engine.notes[n][h] = engine.notes[n][h-1];
+            engine.gateOn[n][h] = engine.gateOn[n][h-1];
+            engine.gateChanged[n][h] = engine.gateChanged[n][h-1];
+        }
+}
+
 void calculateNotes(void) {
     for (uint8_t i = 0; i < NOTECOUNT; i++) calculateNextNote(i);
 }
@@ -243,7 +255,7 @@ void calculateNote(int n) {
     
     uint8_t octave = (note / 12 < 2 ? note / 12 : 2) * 12;
     uint8_t sc = engine.scale ? 1 : 0;
-    engine.notes[n] = engine.scaleCount[sc] ? engine.scales[sc][note % engine.scaleCount[sc]] + octave : 0;
+    engine.notes[n][0] = engine.scaleCount[sc] ? engine.scales[sc][note % engine.scaleCount[sc]] + octave : 0;
 }
    
 void calculateNextNote(int n) {
@@ -262,7 +274,7 @@ void calculateNextNote(int n) {
     if (engine.config.algoY & 4) gate ^= engine.trackOn[(n + 3) % TRACKCOUNT] << 3;
     
     uint8_t previousGatesOn = 1;
-    for (uint8_t i = 0; i < NOTECOUNT - 1; i++) previousGatesOn &= engine.gateChanged[i] & engine.gateOn[i];
+    for (uint8_t i = 0; i < NOTECOUNT - 1; i++) previousGatesOn &= engine.gateChanged[i][0] & engine.gateOn[i][0];
     if (n == NOTECOUNT - 1 && previousGatesOn) gate = 0;
     
     u8 space = spacePresets[(engine.config.space | n) % SPACEPRESETCOUNT];
@@ -271,7 +283,7 @@ void calculateNextNote(int n) {
    
     if (!engine.scaleCount[engine.scale]) gate = 0;
    
-    engine.gateChanged[n] = engine.gateOn[n] != gate;
-    engine.gateOn[n] = gate;
-    if (engine.gateChanged[n]) calculateNote(n);
+    engine.gateChanged[n][0] = engine.gateOn[n][0] != gate;
+    engine.gateOn[n][0] = gate;
+    if (engine.gateChanged[n][0]) calculateNote(n);
 }

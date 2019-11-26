@@ -11,6 +11,7 @@
 #define SCALECOUNT 2
 
 #define NOTECOUNT 8
+#define HISTORYCOUNT 8
 #define MODCOUNT 4
 
 
@@ -42,9 +43,9 @@ typedef struct {
     uint8_t scaleCount[SCALECOUNT];
     uint8_t scale;
     
-    uint8_t notes[NOTECOUNT];
-    uint8_t gateOn[NOTECOUNT];
-    uint8_t gateChanged[NOTECOUNT];
+    uint8_t notes[NOTECOUNT][HISTORYCOUNT];
+    uint8_t gateOn[NOTECOUNT][HISTORYCOUNT];
+    uint8_t gateChanged[NOTECOUNT][HISTORYCOUNT];
     
     uint16_t modCvs[MODCOUNT];
     uint8_t modGateOn[MODCOUNT];
@@ -75,8 +76,8 @@ void setCurrentScale(uint8_t scale);
 uint8_t getCurrentScale(void);
 uint8_t getScaleCount(uint8_t scale);
 
-uint8_t getNote(uint8_t index);
-uint8_t getGate(uint8_t index);
-uint8_t getGateChanged(uint8_t index);
+uint8_t getNote(uint8_t index, u8 generation);
+uint8_t getGate(uint8_t index, u8 generation);
+uint8_t getGateChanged(uint8_t index, u8 generation);
 uint16_t getModCV(uint8_t index);
 uint8_t getModGate(uint8_t index);
