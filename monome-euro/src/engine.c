@@ -50,6 +50,7 @@ static void calculateNotes(void);
 static void calculateMods(void);
 static void calculateNote(int n);
 static void calculateNextNote(int n);
+static void initHistory(void);
 static void pushHistory(void);
 
 
@@ -66,7 +67,7 @@ void initEngine(engine_config_t *config) {
     reset();
     updateTrackParameters();
     updateTrackValues();
-    pushHistory();
+    initHistory();
     calculateNotes();
     calculateMods();
 }
@@ -213,6 +214,15 @@ void updateTrackValues() {
         engine.weightOn[i] = engine.trackOn[i] ? weights[i] : 0;
         engine.totalWeight += engine.weightOn[i];
     }
+}
+
+void initHistory(void) {
+    for (uint8_t n = 0; n < NOTECOUNT; n++)
+        for (uint8_t h = 1; h < HISTORYCOUNT; h++) {
+            engine.notes[n][h] = 0;
+            engine.gateOn[n][h] = 0;
+            engine.gateChanged[n][h] = 0;
+        }
 }
 
 void pushHistory(void) {

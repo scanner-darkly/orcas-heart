@@ -39,6 +39,7 @@ typedef struct {
     
     u16 speed;
     u16 gate_length;
+    u8 delay_width;
     u8 note_delay[NOTECOUNT];
     
     s8 transpose[TRANSSEQLEN];
@@ -51,7 +52,8 @@ typedef struct {
     u8 matrix_on[MATRIXCOUNT];
     u8 matrix_mode;
     
-    u8 voice_vol[NOTECOUNT];
+    u8 vol_index;
+    u8 voice_vol[NOTECOUNT][2];
     u8 voice_on[NOTECOUNT];
 } preset_data_t;
 
