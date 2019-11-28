@@ -71,6 +71,7 @@ void updateSpace(uint8_t space);
 void clock(void);
 void reset(void);
 uint8_t isReset(void);
+uint8_t getCurrentStep(void);uint8_t getCurrentStep(void);
 
 void setCurrentScale(uint8_t scale);
 uint8_t getCurrentScale(void);

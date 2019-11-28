@@ -29,6 +29,7 @@ typedef struct {
     u8 param;
     u8 mi;
     u8 i2c_device;
+    u8 run;
 } shared_data_t;
 
 typedef struct {
@@ -54,6 +55,7 @@ typedef struct {
     u8 matrix_mode;
     
     u8 vol_index;
+    u8 vol_dir;
     u8 voice_vol[NOTECOUNT][2];
     u8 voice_on[NOTECOUNT];
 } preset_data_t;

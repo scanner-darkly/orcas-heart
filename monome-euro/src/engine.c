@@ -145,6 +145,10 @@ uint8_t isReset() {
     return engine.globalCounter == 0;
 }
 
+uint8_t getCurrentStep() {
+    return engine.globalCounter;
+}
+
 void setCurrentScale(uint8_t scale) {
     if (scale >= SCALECOUNT) return;
     engine.scale = scale;

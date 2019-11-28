@@ -50,6 +50,12 @@
 #define MATRIXMODEEDIT 0
 #define MATRIXMODEPERF 1
 
+#define VOL_DIR_OFF  0
+#define VOL_DIR_RAND 1
+#define VOL_DIR_FLIP 2
+#define VOL_DIR_SLEW 3
+
+
 // presets and data stored in presets
 
 shared_data_t s;
@@ -76,8 +82,12 @@ static void save_preset(void);
 static void save_preset_and_confirm(void);
 static void load_preset(u8 preset);
 
+static void toggle_run_stop(void);
+
 static void set_up_i2c(void);
 static void select_i2c_device(u8 device);
+
+static void set_vol_dir(u8 dir);
 static void toggle_voice_on(u8 voice);
 static void set_voice_vol(u8 voice, u8 vol);
 static void set_vol_index(u8 index);
@@ -87,7 +97,6 @@ static void update_speed_from_buttons(void);
 static void update_speed(u32 speed);
 
 static void step(void);
-
 static void update_matrix(void);
 
 static void output_notes(void);
@@ -162,6 +171,7 @@ void init_presets(void) {
     s.param = PARAM_LEN;
     s.mi = 0;
     s.i2c_device = VOICE_JF;
+    s.run = 1;
     store_shared_data_to_flash(&s);
     
     p.config.length = 8;
@@ -199,6 +209,7 @@ void init_presets(void) {
     p.matrix_mode = MATRIXMODEEDIT;
     
     p.vol_index = 0;
+    p.vol_dir = VOL_DIR_OFF;
     for (u8 i = 0; i < NOTECOUNT; i++) {
         p.voice_vol[i][0] = p.voice_vol[i][1] = MAXVOLUMELEVEL;
         p.voice_on[i] = 1;
@@ -280,7 +291,7 @@ void process_event(u8 event, u8 *data, u8 length) {
             } else if (data[0] == SPEEDBUTTONTIMER) {
                 update_speed_from_buttons();
             } else if (data[0] == CLOCKTIMER) {
-                if (!is_external_clock_connected()) step();
+                if (!is_external_clock_connected() && s.run) step();
             } else if (data[0] == CLOCKOUTTIMER) {
                 set_clock_output(0);
             } else if (data[0] >= NOTEDELAYTIMER && data[0] < GATETIMER) {
@@ -351,6 +362,11 @@ void load_preset(u8 preset) {
     refresh_grid();
 }
 
+void toggle_run_stop() {
+    s.run = !s.run;
+    refresh_grid();
+}
+
 void set_up_i2c() {
     for (u8 i = 0; i < NOTECOUNT; i++) stop_note(i);
     
@@ -383,6 +399,11 @@ void select_i2c_device(u8 device) {
     refresh_grid();
 }
 
+void set_vol_dir(u8 dir) {
+    p.vol_dir = dir;
+    refresh_grid();
+}
+
 void toggle_voice_on(u8 voice) {
     p.voice_on[voice] = !p.voice_on[voice];
     if (!p.voice_on[voice]) stop_note(voice);
@@ -402,7 +423,7 @@ void set_vol_index(u8 index) {
 void update_speed_from_knob() {
     if (get_knob_count() == 0) return;
     
-    u32 speed = (((get_knob_value(0) * 1980) >> 17) << 1) + 20;
+    u32 speed = (((get_knob_value(0) * 1980) >> 19) << 3) + 20;
     update_speed(speed);
 }
 
@@ -497,7 +518,24 @@ u8 note_gen(u8 n) {
 }
 
 u16 note_vol(u8 n) {
-    return getModCV(0) * 50 + 1000 * (p.voice_vol[n][p.vol_index] + 1);
+    u16 volume;
+    
+    if (p.vol_dir == VOL_DIR_RAND) {
+        u16 min = (min(p.voice_vol[n][0], p.voice_vol[n][1]) + 1) * 1000;
+        u16 max = (max(p.voice_vol[n][0], p.voice_vol[n][1]) + 1) * 1000;
+        volume = (rand() % (max - min + 1)) + min;
+    } else if (p.vol_dir == VOL_DIR_FLIP) {
+        volume = 1000 * (p.voice_vol[n][reset_phase] + 1);
+    } else if (p.vol_dir == VOL_DIR_SLEW) {
+        u16 v1 = p.voice_vol[n][0] * 1000;
+        u16 v2 = p.voice_vol[n][1] * 1000;
+        u16 step = reset_phase ? getCurrentStep() : getLength() - getCurrentStep();
+        volume = (v2 - v1) * step / getLength() + v1;
+    } else {
+        volume =  getModCV(0) * 50 + 1000 * (p.voice_vol[n][p.vol_index] + 1);
+    }
+
+    return volume;
 }
 
 void output_mods(void) {
@@ -814,6 +852,9 @@ void process_grid_press(u8 x, u8 y, u8 on) {
             case 1:
                 select_matrix(1);
                 return;
+            case 2:
+                select_param(PARAM_TRANS);
+                break;
             case 14:
                 select_page(PAGE_N_DEL);
                 return;
@@ -848,9 +889,6 @@ void process_grid_press(u8 x, u8 y, u8 on) {
     if (y == 0) {
         if (!on) return;
         switch (x) {
-            case 2:
-                select_param(PARAM_TRANS);
-                break;
             case 4:
                 select_param(PARAM_LEN);
                 break;
@@ -1182,6 +1220,11 @@ void process_grid_note_delay(u8 x, u8 y, u8 on) {
         return;
     }
     
+    if (x == 15 && y == 2) {
+        toggle_run_stop();
+        return;
+    }
+    
     if (y < 4) return;
     if (s.i2c_device == VOICE_JF && y < 5) return;
     
@@ -1197,6 +1240,8 @@ void process_grid_note_delay(u8 x, u8 y, u8 on) {
 
 void render_note_delay_page() {
     u8 off = 3;
+    
+    set_grid_led(15, 2, s.run ? 15 : 4);
     
     for (u8 x = 4; x < 12; x++) set_grid_led(x, 2, off);
     set_grid_led(3 + p.delay_width, 2, 15);
@@ -1238,7 +1283,19 @@ void process_grid_i2c(u8 x, u8 y, u8 on) {
             select_i2c_device(VOICE_TXO_NOTE);
     }
     
-    if (x == 0 && y > 2 && y < 5) {
+    if (x == 0 && y > 3) {
+        if (y == 4)
+            set_vol_dir(VOL_DIR_RAND);
+        else if (y == 5)
+            set_vol_dir(VOL_DIR_SLEW);
+        else if (y == 6)
+            set_vol_dir(VOL_DIR_FLIP);
+        else
+            set_vol_dir(VOL_DIR_OFF);
+        return;
+    }
+    
+    if (x == 2 && y > 2 && y < 5) {
         set_vol_index(y - 3);
         return;
     }
@@ -1262,8 +1319,13 @@ void process_grid_i2c(u8 x, u8 y, u8 on) {
 void render_i2c_page() {
     u8 on = 15, off = 4;
 
-    set_grid_led(0, 3, p.vol_index ? off : on);
-    set_grid_led(0, 4, p.vol_index ? on : off);
+    set_grid_led(2, 3, p.vol_index ? off : on);
+    set_grid_led(2, 4, p.vol_index ? on : off);
+    
+    set_grid_led(0, 4, p.vol_dir == VOL_DIR_RAND ? on : off);
+    set_grid_led(0, 5, p.vol_dir == VOL_DIR_SLEW ? on : off);
+    set_grid_led(0, 6, p.vol_dir == VOL_DIR_FLIP ? on : off);
+    set_grid_led(0, 7, p.vol_dir == VOL_DIR_OFF  ? on : off);
     
     set_grid_led(15, 2, s.i2c_device == VOICE_CV_GATE ? on : off);
     set_grid_led(15, 3, s.i2c_device == VOICE_ER301 ? on : off);
@@ -1274,9 +1336,10 @@ void render_i2c_page() {
     u8 d = s.i2c_device == VOICE_JF ? 1 : 0;
     u8 m = s.i2c_device == VOICE_JF ? 6 : 8;
     
+    u16 vol;
     for (u8 i = 0; i < m; i++) {
-        for (u8 y = 0; y < 7; y++)
-            set_grid_led(i + 4 + d, y, p.voice_on[i] ? 4 : 2);
+        for (u8 y = 0; y < p.voice_vol[i][p.vol_index]; y++)
+            set_grid_led(i + 4 + d, 6 - y, p.voice_on[i] ? 4 : 2);
         
         set_grid_led(i + 4 + d, 7 - p.voice_vol[i][p.vol_index], p.voice_on[i] ? 15 : 6);
         set_grid_led(i + 4 + d, 7, p.voice_on[i] ? 6 : 15);
@@ -1335,12 +1398,7 @@ char* itoa(int value, char* result, int base) {
 
 /*
 
-- adjust volume brightness
 - swing
-- check timing with teletype
-- stop internal clock manually
-- animation for volume
-
 - undo matrix random/clear
 - matrix snapshots
 - ability to select any 2 parameters for editing by pressing 2 menu buttons
@@ -1349,13 +1407,16 @@ char* itoa(int value, char* result, int base) {
 
 -- not tested:
 
+- volume morphing
 - note delays
 - volume for each voice instead of mute
 - bottom row on i2c page should work as mute on/off
 - only show available voices for just friends on delay and volume pages
 - fix speed not loading from presets on ansible
 - preset page will open on press, not release
-- selected scale wasn't save with preset, fixed
+- selected scale wasn't saved with preset, fixed
+- speed knob sensitivity decreased
+- ability to stop the clock
 
 - clock output
 - additional gate inputs on ansible/teletype
