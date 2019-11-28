@@ -188,6 +188,7 @@ void init_presets(void) {
         
     p.scaleA_octave = 0;
     p.scaleB_octave = 0;
+    p.current_scale = 0;
     
     for (u8 i = 0; i < MATRIXCOUNT; i++) {
         p.matrix_on[i] = 1;
@@ -345,6 +346,7 @@ void load_preset(u8 preset) {
     initEngine(&p.config);
     update_timer_interval(CLOCKTIMER, 60000 / p.speed);
     updateScales(p.scale_buttons);
+    setCurrentScale(p.current_scale);
 
     refresh_grid();
 }
@@ -613,6 +615,7 @@ void toggle_scale(u8 manual) {
     u8 newScale = (getCurrentScale() + 1) % SCALECOUNT;
     if (getScaleCount(newScale) == 0 && !manual) return;
     setCurrentScale(newScale);
+    p.current_scale = newScale;
     if (s.page == PAGE_PARAM) refresh_grid();
 }
 
@@ -1332,14 +1335,17 @@ char* itoa(int value, char* result, int base) {
 
 /*
 
+- adjust volume brightness
 - swing
-- animation for volume
 - check timing with teletype
 - stop internal clock manually
-- check preset initialization
+- animation for volume
 
+- undo matrix random/clear
+- matrix snapshots
 - ability to select any 2 parameters for editing by pressing 2 menu buttons
 - improve teletype display
+- momentary mode for scale notes (or a separate play screen?)
 
 -- not tested:
 
@@ -1349,6 +1355,7 @@ char* itoa(int value, char* result, int base) {
 - only show available voices for just friends on delay and volume pages
 - fix speed not loading from presets on ansible
 - preset page will open on press, not release
+- selected scale wasn't save with preset, fixed
 
 - clock output
 - additional gate inputs on ansible/teletype
