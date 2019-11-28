@@ -1400,7 +1400,7 @@ char* itoa(int value, char* result, int base) {
 
 - swing
 - undo matrix random/clear
-- matrix snapshots
+- matrix snapshots (with ability to select multiple at once?)
 - ability to select any 2 parameters for editing by pressing 2 menu buttons
 - improve teletype display
 - momentary mode for scale notes (or a separate play screen?)
