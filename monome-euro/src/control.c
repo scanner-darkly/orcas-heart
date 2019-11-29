@@ -1400,6 +1400,7 @@ char* itoa(int value, char* result, int base) {
 
 - swing
 - undo matrix random/clear
+- delays are not calculated properly for ext clock
 - matrix snapshots (with ability to select multiple at once?)
 - ability to select any 2 parameters for editing by pressing 2 menu buttons
 - improve teletype display
