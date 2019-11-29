@@ -40,6 +40,8 @@ typedef struct {
     
     u16 speed;
     u16 gate_length;
+    
+    u8 swing;
     u8 delay_width;
     u8 note_delay[NOTECOUNT];
     

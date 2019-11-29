@@ -120,6 +120,7 @@ static void set_shift(u8 shift);
 static void set_space(u8 space);
 
 static void set_gate_length(u16 len);
+static void set_swing(u8 swing);
 static void set_delay_width(u8 delay);
 static void set_note_delay(u8 n, u8 delay);
 
@@ -182,6 +183,8 @@ void init_presets(void) {
     
     p.speed = 400;
     p.gate_length = 1000;
+    
+    p.swing = 0;
     p.delay_width = 1;
     for (u8 i = 0; i < NOTECOUNT; i++) p.note_delay[i] = 0;
     
@@ -490,6 +493,7 @@ void output_notes(void) {
             notes_vol[n] = note_vol(n);
             notes_on[n] = getGate(n, gen);
             u32 ndel = (p.delay_width * p.note_delay[n]) % 8;
+            if (getCurrentStep() & 1) ndel += p.swing;
             
             if (ndel) {
                 u32 delay = (60000 * ndel) / (u32)(p.speed * 8);
@@ -514,7 +518,9 @@ void stop_note(u8 n) {
 }
 
 u8 note_gen(u8 n) {
-    return (p.note_delay[n] * p.delay_width) / 8;
+    u8 gen = (p.note_delay[n] * p.delay_width) / 8;
+    if (gen >= HISTORYCOUNT) gen = HISTORYCOUNT;
+    return gen;
 }
 
 u16 note_vol(u8 n) {
@@ -751,6 +757,11 @@ void set_space(u8 space) {
 void set_gate_length(u16 len) {
     p.gate_length = len;
     if (s.page == PAGE_PARAM && s.param == PARAM_GATEL) refresh_grid();
+}
+
+void set_swing(u8 swing) {
+    p.swing = swing;
+    refresh_grid();
 }
 
 void set_delay_width(u8 delay) {
@@ -1220,6 +1231,11 @@ void process_grid_note_delay(u8 x, u8 y, u8 on) {
         return;
     }
     
+    if (y == 3 && x > 3 && x < 12) {
+        set_swing(x - 4);
+        return;
+    }
+    
     if (x == 15 && y == 2) {
         toggle_run_stop();
         return;
@@ -1246,6 +1262,9 @@ void render_note_delay_page() {
     for (u8 x = 4; x < 12; x++) set_grid_led(x, 2, off);
     set_grid_led(3 + p.delay_width, 2, 15);
     
+    for (u8 x = 4; x < 12; x++) set_grid_led(x, 3, off);
+    set_grid_led(4 + p.swing, 3, 15);
+
     for (u8 x = 0; x < 16; x++)
         for (u8 y = s.i2c_device == VOICE_JF ? 5 : 4; y < 8; y++)
             set_grid_led(x, y, x == 0 || x == 8 ? 8 : off);
