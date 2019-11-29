@@ -231,7 +231,7 @@ void initHistory(void) {
 
 void pushHistory(void) {
     for (uint8_t n = 0; n < NOTECOUNT; n++)
-        for (uint8_t h = 1; h < HISTORYCOUNT; h++) {
+        for (int8_t h = HISTORYCOUNT - 1; h > 0; h--) {
             engine.notes[n][h] = engine.notes[n][h-1];
             engine.gateOn[n][h] = engine.gateOn[n][h-1];
             engine.gateChanged[n][h] = engine.gateChanged[n][h-1];
