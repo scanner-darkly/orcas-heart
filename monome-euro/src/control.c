@@ -1417,27 +1417,20 @@ char* itoa(int value, char* result, int base) {
 
 /*
 
-- swing
+- fix button press on multipass
+- shift down by octave or two
+- add dedicated +/- octave buttons
 - undo matrix random/clear
 - delays are not calculated properly for ext clock
+- make gate len proportional to ext clock
 - matrix snapshots (with ability to select multiple at once?)
-- ability to select any 2 parameters for editing by pressing 2 menu buttons
 - improve teletype display
 - momentary mode for scale notes (or a separate play screen?)
 
 -- not tested:
 
-- volume morphing
-- note delays
-- volume for each voice instead of mute
-- bottom row on i2c page should work as mute on/off
-- only show available voices for just friends on delay and volume pages
 - fix speed not loading from presets on ansible
-- preset page will open on press, not release
 - selected scale wasn't saved with preset, fixed
-- speed knob sensitivity decreased
-- ability to stop the clock
-
 - clock output
 - additional gate inputs on ansible/teletype
 - gate length
@@ -1446,6 +1439,8 @@ char* itoa(int value, char* result, int base) {
 
 - move mod matrix to engine
 - edit scale notes / microtonal scales
+- performance page?
+- ability to select any 2 parameters for editing by pressing 2 menu buttons?
 - matrix on/off fast forwarded
 - i2c parameters in mod matrix
 - visualize values for algox/algoy
@@ -1453,6 +1448,5 @@ char* itoa(int value, char* result, int base) {
 
 - MIDI keyboard support
 - toggle between directly mapped voices / first available
-- make gate len proportional to ext clock
 
 */
