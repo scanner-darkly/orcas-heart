@@ -8,7 +8,7 @@
 #define TRACKCOUNT 8
 
 #define SCALELEN 12
-#define SCALECOUNT 2
+#define SCALECOUNT 4
 
 #define NOTECOUNT 8
 #define HISTORYCOUNT 8

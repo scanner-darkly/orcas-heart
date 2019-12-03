@@ -33,17 +33,17 @@
 #define GATETIMER  90
 
 #define PAGE_PARAM  0
-#define PAGE_MATRIX 1
-#define PAGE_N_DEL  2
-#define PAGE_I2C    3
+#define PAGE_TRANS  1
+#define PAGE_MATRIX 2
+#define PAGE_N_DEL  3
+#define PAGE_I2C    4
 
 #define PARAM_LEN   0
 #define PARAM_ALGOX 1
 #define PARAM_ALGOY 2
 #define PARAM_SHIFT 3
 #define PARAM_SPACE 4
-#define PARAM_TRANS 5
-#define PARAM_GATEL 6
+#define PARAM_GATEL 5
 
 #define MATRIXMAXSTATE 1
 #define MATRIXGATEWEIGHT 60
@@ -108,10 +108,12 @@ static u16 note_vol(u8 n);
 static void output_mods(void);
 static void output_clock(void);
 
-static void toggle_scale(u8 manual);
-static void toggle_scaleA_octave(void);
-static void toggle_scaleB_octave(void);
-void toggle_scale_note(u8 scale, u8 note);
+static void set_octave(s8 octave);
+static void toggle_octave(void);
+
+static void set_current_scale(u8 scale);
+static void toggle_scale(void);
+static void toggle_scale_note(u8 scale, u8 note);
 
 static void set_length(u8 length);
 static void set_algoX(u8 algoX);
@@ -143,12 +145,14 @@ static void update_display(void);
 
 static void process_gate(u8 index, u8 on);
 static void process_grid_press(u8 x, u8 y, u8 on);
+static void process_grid_trans(u8 x, u8 y, u8 on);
 static void process_grid_param(u8 x, u8 y, u8 on);
 static void process_grid_matrix(u8 x, u8 y, u8 on);
 static void process_grid_note_delay(u8 x, u8 y, u8 on);
 static void process_grid_i2c(u8 x, u8 y, u8 on);
 static void process_grid_presets(u8 x, u8 y, u8 on);
 
+static void render_trans_page(void);
 static void render_param_page(void);
 static void render_matrix_page(void);
 static void render_note_delay_page(void);
@@ -192,15 +196,11 @@ void init_presets(void) {
     p.transpose_seq_on = 0;
     
     for (u8 s = 0; s < SCALECOUNT; s++) {
-        for (u8 i = 0; i < SCALELEN; i++)
-            p.scale_buttons[s][i] = 0;
+        for (u8 i = 0; i < SCALELEN; i++) p.scale_buttons[s][i] = 0;
         p.scale_buttons[s][0] = p.scale_buttons[s][3] = p.scale_buttons[s][5] = p.scale_buttons[s][7] = 1;
     }
 
-    p.scale_buttons[0][0] = p.scale_buttons[0][3] = p.scale_buttons[0][5] = p.scale_buttons[0][7] = 1;
-        
-    p.scaleA_octave = 0;
-    p.scaleB_octave = 0;
+    p.octave = 0;
     p.current_scale = 0;
     
     for (u8 i = 0; i < MATRIXCOUNT; i++) {
@@ -462,15 +462,14 @@ void step() {
 void transpose_step() {
     if (p.transpose_seq_on && isReset()) {
         trans_step = (trans_step + 1) % TRANSSEQLEN;
-        if (s.page == PAGE_PARAM && s.param == PARAM_TRANS) refresh_grid();
+        refresh_grid();
     }
 }
 
 void output_notes(void) {
-    u8 trans = 24 + p.transpose[trans_step];
-    u8 scale = getCurrentScale();
-    if (!scale && p.scaleA_octave) trans += 12;
-    else if (scale && p.scaleB_octave) trans += 12;
+    u8 trans = 12 + p.transpose[trans_step];
+    if (p.octave > 0) trans += 12;
+    else if (p.octave < 0 && trans >= 12) trans -= 12;
 
     u8 prev_notes[NOTECOUNT];
     u8 found;
@@ -555,8 +554,7 @@ void output_clock() {
 
 void update_matrix(void) {
     u8 prevScale = matrix_values[7];
-    u8 prevOctaveA = matrix_values[8];
-    u8 prevOctaveB = matrix_values[9];
+    u8 prevOctave = matrix_values[8];
     
     if (isReset()) {
         reset_phase = !reset_phase;
@@ -644,33 +642,43 @@ void update_matrix(void) {
     
     gate_length_mod = counts[6] ? (matrix_values[6] * 390) / (12 * MATRIXMAXSTATE * counts[6]) : 0;
     gate_length_mod += p.gate_length;
-    if (gate_length_mod < 100) gate_length_mod = 100; else if (gate_length_mod > 4000) gate_length_mod = 4000;    
+    if (gate_length_mod < 40) gate_length_mod = 40; else if (gate_length_mod > 2000) gate_length_mod = 2000;    
     
-    if (matrix_values[7] > prevScale && matrix_values[7]) toggle_scale(0);
+    if (matrix_values[7] > prevScale && matrix_values[7]) toggle_scale();
     
-    if (matrix_values[8] > prevOctaveA && matrix_values[8]) toggle_scaleA_octave();
-
-    if (matrix_values[9] > prevOctaveB && matrix_values[9]) toggle_scaleB_octave();
+    if (matrix_values[8] > prevOctave && matrix_values[8]) toggle_octave();
     
     refresh_grid();
 }
 
-void toggle_scale(u8 manual) {
-    u8 newScale = (getCurrentScale() + 1) % SCALECOUNT;
-    if (getScaleCount(newScale) == 0 && !manual) return;
-    setCurrentScale(newScale);
-    p.current_scale = newScale;
-    if (s.page == PAGE_PARAM) refresh_grid();
+void toggle_octave() {
+    set_octave(p.octave ? 0 : 1);
 }
 
-void toggle_scaleA_octave() {
-    p.scaleA_octave = !p.scaleA_octave;
-    if (s.page == PAGE_PARAM) refresh_grid();
+void set_current_scale(u8 scale) {
+    if (scale >= SCALECOUNT) return;
+    
+    setCurrentScale(scale);
+    p.current_scale = scale;
+    refresh_grid();
 }
 
-void toggle_scaleB_octave() {
-    p.scaleB_octave = !p.scaleB_octave;
-    if (s.page == PAGE_PARAM) refresh_grid();
+void set_octave(s8 octave) {
+    p.octave = octave;
+    refresh_grid();
+}
+
+void toggle_scale() {
+    u8 newScale;
+    for (u8 i = 0; i < SCALECOUNT - 1; i++) {
+        newScale = (getCurrentScale() + 1) % SCALECOUNT;
+        if (getScaleCount(newScale) != 0) {
+            setCurrentScale(newScale);
+            p.current_scale = newScale;
+            refresh_grid();
+            break;
+        }
+    }
 }
 
 void toggle_scale_note(u8 scale, u8 note) {
@@ -783,7 +791,7 @@ void toggle_transpose_seq() {
 
 void set_transpose(s8 trans) {
     p.transpose[trans_sel] = trans;
-    if (s.page == PAGE_PARAM && s.param == PARAM_TRANS) refresh_grid();
+    refresh_grid();
 }
 
 void set_transpose_sel(u8 sel) {
@@ -828,13 +836,10 @@ void process_gate(u8 index, u8 on) {
             reset();
             break;
         case 1:
-            toggle_scale(1);
+            toggle_scale();
             break;
         case 2:
-            toggle_scaleA_octave();
-            break;
-        case 3:
-            toggle_scaleB_octave();
+            toggle_octave();
             break;
         default:
             break;
@@ -864,7 +869,7 @@ void process_grid_press(u8 x, u8 y, u8 on) {
                 select_matrix(1);
                 return;
             case 2:
-                select_param(PARAM_TRANS);
+                select_page(PAGE_TRANS);
                 break;
             case 14:
                 select_page(PAGE_N_DEL);
@@ -887,7 +892,7 @@ void process_grid_press(u8 x, u8 y, u8 on) {
         return;
     }
 
-    if (y == 1 && x == 2 && on) {
+    if (y == 1 && x == 15 && on) {
         toggle_transpose_seq();
         return;
     }
@@ -924,7 +929,8 @@ void process_grid_press(u8 x, u8 y, u8 on) {
         return;
     }
     
-    if (s.page == PAGE_PARAM) process_grid_param(x, y, on);
+    if (s.page == PAGE_TRANS) process_grid_trans(x, y, on);
+    else if (s.page == PAGE_PARAM) process_grid_param(x, y, on);
     else if (s.page == PAGE_MATRIX) process_grid_matrix(x, y, on);
     else if (s.page == PAGE_N_DEL) process_grid_note_delay(x, y, on);
 }
@@ -955,8 +961,8 @@ void render_grid() {
     set_grid_led(0, 1, p.matrix_on[0] ? off : off - 4);
     set_grid_led(1, 1, p.matrix_on[1] ? off : off - 4);
     
-    set_grid_led(2, 0, s.page == PAGE_PARAM && s.param == PARAM_TRANS ? on : off);
-    set_grid_led(2, 1, p.transpose_seq_on ? off : off - 4);
+    set_grid_led(2, 0, s.page == PAGE_TRANS ? on : off);
+    set_grid_led(15, 1, p.transpose_seq_on ? off : off - 4);
     
     set_grid_led(14, 0, s.page == PAGE_N_DEL ? on : off);
     set_grid_led(15, 0, s.page == PAGE_I2C ? on : off);
@@ -973,7 +979,8 @@ void render_grid() {
     set_grid_led(8, 0, s.page == PAGE_PARAM && s.param == PARAM_SPACE ? on : off);
     set_grid_led(9, 0, s.page == PAGE_PARAM && s.param == PARAM_GATEL ? on : off);
     
-    if (s.page == PAGE_PARAM) render_param_page();
+    if (s.page == PAGE_TRANS) render_trans_page();
+    else if (s.page == PAGE_PARAM) render_param_page();
     else if (s.page == PAGE_MATRIX) render_matrix_page();
     else if (s.page == PAGE_N_DEL) render_note_delay_page();
 }
@@ -1009,23 +1016,87 @@ void render_presets() {
     set_grid_led((selected_preset % 8) + 4, 5 + selected_preset / 8, 15);
 }
 
+void process_grid_trans(u8 x, u8 y, u8 on) {
+    if (!on) return;
+
+    if (x == 0 && y > 3) {
+        set_current_scale(y - 4);
+        return;
+    }
+    
+    if (y > 3 && y < 8 && x > 1 && x < 14) {
+        toggle_scale_note(y - 4, x - 2);
+        return;
+    }
+    
+    if (y == 2 && x == 0) {
+        set_octave(p.octave == -1 ? 0 : -1);
+        return;
+    }
+
+    if (y == 3 && x == 15) {
+        set_octave(p.octave == 1 ? 0 : 1);
+        return;
+    }
+
+    if (y == 1) {
+        u8 t = x - (8 - TRANSSEQLEN / 2);
+        if (t < TRANSSEQLEN) {
+            set_transpose_sel(t);
+            if (!p.transpose_seq_on) set_transpose_step(t);
+        }
+    } else if (y == 2)
+        set_transpose(x - 15);
+    else if (y == 3)
+        set_transpose(x);
+}
+
+void render_trans_page() {
+    u8 on = 15, mod = 6, off = 3;
+
+    set_grid_led(0, 4, off);
+    set_grid_led(0, 5, off);
+    set_grid_led(0, 6, off);
+    set_grid_led(0, 7, off);
+    set_grid_led(0, getCurrentScale() + 4, on);
+    
+    set_grid_led(15, 4, off);
+    set_grid_led(15, 5, off);
+    set_grid_led(15, 6, off);
+    set_grid_led(15, 7, off);
+
+    for (u8 i = 0; i < SCALECOUNT; i++) {
+        for (u8 j = 0; j < SCALELEN; j++) set_grid_led(2 + j, i + 4, p.scale_buttons[i][j] ? on : off);
+    }
+    
+    u8 p1 = 8 - TRANSSEQLEN / 2;
+    for (u8 i = 0; i < TRANSSEQLEN; i++) set_grid_led(i + p1, 1, off);
+    set_grid_led(trans_sel + p1, 1, mod);
+    set_grid_led(trans_step + p1, 1, on);
+
+    for (u8 y = 2; y < 4; y++)
+        for (u8 x = 0; x < 16; x++)
+            set_grid_led(x, y, off);
+        
+    set_grid_led(0, 2, p.octave == -1 ? on : mod);
+    set_grid_led(15, 3, p.octave == 1 ? on : mod);
+    
+    set_grid_led(15, 2, p.transpose[trans_sel] ? mod : on);
+    set_grid_led(0, 3, p.transpose[trans_sel] ? mod : on);
+    
+    if (p.transpose[trans_step] < 0)
+        set_grid_led(15 + p.transpose[trans_step], 2, mod);
+    else if (p.transpose[trans_step])
+        set_grid_led(p.transpose[trans_step], 3, mod);
+
+    if (p.transpose[trans_sel] < 0)
+        set_grid_led(15 + p.transpose[trans_sel], 2, on);
+    else if (p.transpose[trans_sel])
+        set_grid_led(p.transpose[trans_sel], 3, on);
+}
+
 void process_grid_param(u8 x, u8 y, u8 on) {
     if (!on) return;
-    
-    if (x == 0 && y == 6)
-        setCurrentScale(0);
-    
-    else if (x == 0 && y == 7)
-        setCurrentScale(1);
-    
-    else if (x == 15 && y == 6)
-        toggle_scaleA_octave();
-    
-    else if (x == 15 && y == 7)
-        toggle_scaleB_octave();
-    
-    else if (y > 5 && y < 8 && x > 1 && x < 14)
-        toggle_scale_note(y - 6, x - 2);
     
     switch (s.param) {
 
@@ -1056,20 +1127,7 @@ void process_grid_param(u8 x, u8 y, u8 on) {
             break;
         
         case PARAM_GATEL:
-            if (y > 2 && y < 5) set_gate_length((((y - 3) << 4) + x) * 129);
-            break;
-        
-        case PARAM_TRANS:
-            if (y == 2) {
-                u8 t = x - (8 - TRANSSEQLEN / 2);
-                if (t < TRANSSEQLEN) {
-                    set_transpose_sel(t);
-                    if (!p.transpose_seq_on) set_transpose_step(t);
-                }
-            } else if (y == 3)
-                set_transpose(x - 15);
-            else if (y == 4)
-                set_transpose(x);
+            if (y > 2 && y < 5) set_gate_length((((y - 3) << 4) + x) * 64);
             break;
         
         default:
@@ -1081,18 +1139,6 @@ void process_grid_param(u8 x, u8 y, u8 on) {
 
 void render_param_page() {
     u8 on = 15, mod = 6, off = 3, y, p1, p2, y2;
-    
-    set_grid_led(0, 6, off);
-    set_grid_led(0, 7, off);
-    set_grid_led(0, getCurrentScale() ? 7 : 6, on);
-    
-    set_grid_led(15, 6, p.scaleA_octave ? on : off);
-    set_grid_led(15, 7, p.scaleB_octave ? on : off);
-
-    for (u8 i = 0; i < SCALECOUNT; i++) {
-        y = 8 - SCALECOUNT + i;
-        for (u8 j = 0; j < SCALELEN; j++) set_grid_led(2 + j, y, p.scale_buttons[i][j] ? on : off);
-    }
     
     switch (s.param) {
         
@@ -1148,31 +1194,6 @@ void render_param_page() {
             set_grid_led(p1, y, on);
             break;
 
-        case PARAM_TRANS:
-            p1 = 8 - TRANSSEQLEN / 2;
-            for (u8 i = 0; i < TRANSSEQLEN; i++) set_grid_led(i + p1, 2, off);
-            set_grid_led(trans_sel + p1, 2, mod);
-            set_grid_led(trans_step + p1, 2, on);
-        
-            for (u8 y = 3; y < 5; y++)
-                for (u8 x = 0; x < 16; x++)
-                    set_grid_led(x, y, off);
-                
-            set_grid_led(15, 3, p.transpose[trans_sel] ? mod : on);
-            set_grid_led(0, 4, p.transpose[trans_sel] ? mod : on);
-            
-            if (p.transpose[trans_step] < 0)
-                set_grid_led(15 + p.transpose[trans_step], 3, mod);
-            else if (p.transpose[trans_step])
-                set_grid_led(p.transpose[trans_step], 4, mod);
-
-            if (p.transpose[trans_sel] < 0)
-                set_grid_led(15 + p.transpose[trans_sel], 3, on);
-            else if (p.transpose[trans_sel])
-                set_grid_led(p.transpose[trans_sel], 4, on);
-        
-            break;
-        
         default:
             break;
     }
@@ -1196,8 +1217,7 @@ void process_grid_matrix(u8 x, u8 y, u8 on) {
 
     // if (x == 4) x = 0;
     if (x > 3 && x < 10) x -= 3;
-    else if (x > 10 && x < 14) x -= 4;
-    else if (x == 15) x = 10;
+    else if (x > 10 && x < 13) x -= 4;
     else return;
     
     if (p.matrix_mode == MATRIXMODEPERF || on) toggle_matrix_cell(y - 1, x);
@@ -1216,8 +1236,7 @@ void render_matrix_page() {
             u8 _x;
             if (x == 0) continue; // _x = 4; 
             if (x < 7) _x = x + 3;
-            else if (x < 10) _x = x + 4;
-            else if (x == 10) _x = 15;
+            else if (x < 9) _x = x + 4;
             else continue;
             set_grid_led(_x, y + 1, p.matrix[s.mi][y][x] * d + a);
         }
@@ -1355,7 +1374,6 @@ void render_i2c_page() {
     u8 d = s.i2c_device == VOICE_JF ? 1 : 0;
     u8 m = s.i2c_device == VOICE_JF ? 6 : 8;
     
-    u16 vol;
     for (u8 i = 0; i < m; i++) {
         for (u8 y = 0; y < p.voice_vol[i][p.vol_index]; y++)
             set_grid_led(i + 4 + d, 6 - y, p.voice_on[i] ? 4 : 2);
@@ -1417,8 +1435,9 @@ char* itoa(int value, char* result, int base) {
 
 /*
 
+- when sequencer is stopped editing affects the last selected note, not the one where sequencer is
 - fix button press on multipass
-- shift down by octave or two
+- jf mode should be reset when choosing another i2c device
 - add dedicated +/- octave buttons
 - undo matrix random/clear
 - delays are not calculated properly for ext clock
@@ -1428,6 +1447,8 @@ char* itoa(int value, char* result, int base) {
 - momentary mode for scale notes (or a separate play screen?)
 
 -- not tested:
+
+- shift down by two octaves
 
 - fix speed not loading from presets on ansible
 - selected scale wasn't saved with preset, fixed

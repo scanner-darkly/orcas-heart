@@ -268,8 +268,7 @@ void calculateNote(int n) {
     note += engine.shifts[n];
     
     uint8_t octave = (note / 12 < 2 ? note / 12 : 2) * 12;
-    uint8_t sc = engine.scale ? 1 : 0;
-    engine.notes[n][0] = engine.scaleCount[sc] ? engine.scales[sc][note % engine.scaleCount[sc]] + octave : 0;
+    engine.notes[n][0] = engine.scaleCount[engine.scale] ? engine.scales[engine.scale][note % engine.scaleCount[engine.scale]] + octave : 0;
 }
    
 void calculateNextNote(int n) {

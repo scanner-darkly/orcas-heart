@@ -49,8 +49,8 @@ typedef struct {
     u8 transpose_seq_on;
 
     u8 scale_buttons[SCALECOUNT][SCALELEN];
-    u8 scaleA_octave, scaleB_octave;
     u8 current_scale;
+    s8 octave;
 
     u8 matrix[MATRIXCOUNT][MATRIXINS][MATRIXOUTS];
     u8 matrix_on[MATRIXCOUNT];
