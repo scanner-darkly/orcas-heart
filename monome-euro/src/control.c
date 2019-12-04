@@ -1435,20 +1435,19 @@ char* itoa(int value, char* result, int base) {
 
 /*
 
+- safeguard all places where speed or length is used
 - when sequencer is stopped editing affects the last selected note, not the one where sequencer is
-- fix button press on multipass
 - jf mode should be reset when choosing another i2c device
-- add dedicated +/- octave buttons
+- fix button press on multipass
+
 - undo matrix random/clear
+- matrix snapshots (with ability to select multiple at once?)
 - delays are not calculated properly for ext clock
 - make gate len proportional to ext clock
-- matrix snapshots (with ability to select multiple at once?)
 - improve teletype display
 - momentary mode for scale notes (or a separate play screen?)
 
 -- not tested:
-
-- shift down by two octaves
 
 - fix speed not loading from presets on ansible
 - selected scale wasn't saved with preset, fixed
