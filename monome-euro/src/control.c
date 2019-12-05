@@ -235,7 +235,7 @@ void init_control(void) {
 
     gate_length_mod = 0;
     
-    add_timed_event(CLOCKTIMER, 60000 / p.speed, 1);
+    add_timed_event(CLOCKTIMER, 60000 / (p.speed ? p.speed : 1), 1);
     add_timed_event(SPEEDTIMER, SPEEDCYCLE, 1);
     
     set_as_i2c_leader();
@@ -358,7 +358,7 @@ void load_preset(u8 preset) {
     load_preset_from_flash(selected_preset, &p);
 
     initEngine(&p.config);
-    update_timer_interval(CLOCKTIMER, 60000 / p.speed);
+    update_timer_interval(CLOCKTIMER, 60000 / (p.speed ? p.speed : 1));
     updateScales(p.scale_buttons);
     setCurrentScale(p.current_scale);
 
@@ -495,7 +495,7 @@ void output_notes(void) {
             if (getCurrentStep() & 1) ndel += p.swing;
             
             if (ndel) {
-                u32 delay = (60000 * ndel) / (u32)(p.speed * 8);
+                u32 delay = (60000 * ndel) / (u32)((p.speed ? p.speed : 1) * 8);
                 if (!delay) delay = 1;
                 add_timed_event(NOTEDELAYTIMER + n, delay, 0);
             } else {
@@ -534,8 +534,10 @@ u16 note_vol(u8 n) {
     } else if (p.vol_dir == VOL_DIR_SLEW) {
         u16 v1 = p.voice_vol[n][0] * 1000;
         u16 v2 = p.voice_vol[n][1] * 1000;
-        u16 step = reset_phase ? getCurrentStep() : getLength() - getCurrentStep();
-        volume = (v2 - v1) * step / getLength() + v1;
+        u16 len = getLength();
+        if (!len) len = 1;
+        u16 step = reset_phase ? getCurrentStep() : len - getCurrentStep();
+        volume = (v2 - v1) * step / len + v1;
     } else {
         volume =  getModCV(0) * 50 + 1000 * (p.voice_vol[n][p.vol_index] + 1);
     }
@@ -1435,17 +1437,21 @@ char* itoa(int value, char* result, int base) {
 
 /*
 
-- safeguard all places where speed or length is used
-- when sequencer is stopped editing affects the last selected note, not the one where sequencer is
-- jf mode should be reset when choosing another i2c device
+- ansible crash fix
 - fix button press on multipass
 
+- adjust brightness for transpose
+- separate octave + for modulation from buttons
+- when sequencer is stopped editing affects the last selected note, not the one where sequencer is
+- jf mode should be reset when choosing another i2c device
+
+- parameter sequencer
 - undo matrix random/clear
 - matrix snapshots (with ability to select multiple at once?)
+- clear / random for delays and i2c params?
 - delays are not calculated properly for ext clock
 - make gate len proportional to ext clock
 - improve teletype display
-- momentary mode for scale notes (or a separate play screen?)
 
 -- not tested:
 
@@ -1459,6 +1465,7 @@ char* itoa(int value, char* result, int base) {
 
 - move mod matrix to engine
 - edit scale notes / microtonal scales
+- momentary mode for scale notes (or a separate play screen?)
 - performance page?
 - ability to select any 2 parameters for editing by pressing 2 menu buttons?
 - matrix on/off fast forwarded
