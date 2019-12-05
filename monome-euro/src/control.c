@@ -1437,9 +1437,8 @@ char* itoa(int value, char* result, int base) {
 
 /*
 
-- ansible crash fix
-- fix button press on multipass
-
+- scale switch mod gets stuck
+- save sequencer data
 - adjust brightness for transpose
 - separate octave + for modulation from buttons
 - when sequencer is stopped editing affects the last selected note, not the one where sequencer is
@@ -1454,6 +1453,9 @@ char* itoa(int value, char* result, int base) {
 - improve teletype display
 
 -- not tested:
+
+- fix button press on multipass
+- ansible crash fix
 
 - fix speed not loading from presets on ansible
 - selected scale wasn't saved with preset, fixed
