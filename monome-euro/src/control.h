@@ -18,6 +18,7 @@
 #define MATRIXOUTS 11
 #define MATRIXINS   7
 #define MATRIXCOUNT 2
+#define MATRIXSNAPSHOTS 4
 #define TRANSSEQLEN 8
 
 
@@ -52,8 +53,9 @@ typedef struct {
     u8 current_scale;
     s8 octave;
 
-    u8 matrix[MATRIXCOUNT][MATRIXINS][MATRIXOUTS];
+    u8 matrix[MATRIXCOUNT][MATRIXSNAPSHOTS][MATRIXINS][MATRIXOUTS];
     u8 matrix_on[MATRIXCOUNT];
+    u8 m_snapshot[MATRIXCOUNT];
     u8 matrix_mode;
     
     u8 vol_index;

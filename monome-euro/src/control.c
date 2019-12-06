@@ -69,6 +69,7 @@ u32 gate_length_mod, speed_button;
 s32 matrix_values[MATRIXOUTS];
 u8 trans_step, trans_sel, reset_phase;
 u8 is_presets, is_preset_saved;
+s8 prev_octave;
 
 u16 notes_pitch[NOTECOUNT];
 u16 notes_vol[NOTECOUNT];
@@ -139,6 +140,7 @@ static void toggle_matrix_mute(u8 m);
 static void toggle_matrix_mode(void);
 static void clear_current_matrix(void);
 static void randomize_current_matrix(void);
+static void set_matrix_snapshot(u8 snapshot);
 static void toggle_matrix_cell(u8 in, u8 out);
 
 static void update_display(void);
@@ -186,7 +188,7 @@ void init_presets(void) {
     p.config.space = 0;
     
     p.speed = 400;
-    p.gate_length = 1000;
+    p.gate_length = 200;
     
     p.swing = 0;
     p.delay_width = 1;
@@ -205,9 +207,11 @@ void init_presets(void) {
     
     for (u8 i = 0; i < MATRIXCOUNT; i++) {
         p.matrix_on[i] = 1;
-        for (u8 j = 0; j < MATRIXINS; j++)
-            for (u8 k = 0; k < MATRIXOUTS; k++)
-                p.matrix[i][j][k] = 0;
+        p.m_snapshot[i] = 0;
+        for (u8 j = 0; j < MATRIXSNAPSHOTS; j++)
+            for (u8 k = 0; k < MATRIXINS; k++)
+                for (u8 l = 0; l < MATRIXOUTS; l++)
+                    p.matrix[i][j][k][l] = 0;
     }
     p.matrix_mode = MATRIXMODEEDIT;
     
@@ -336,6 +340,12 @@ void process_event(u8 event, u8 *data, u8 length) {
 // actions
 
 void toggle_preset_page() {
+    if (is_preset_saved) {
+        is_preset_saved = is_presets = 0;
+        refresh_grid();
+        return;
+    }
+    
     is_presets = !is_presets;
     refresh_grid();
 }
@@ -360,7 +370,7 @@ void load_preset(u8 preset) {
     initEngine(&p.config);
     update_timer_interval(CLOCKTIMER, 60000 / (p.speed ? p.speed : 1));
     updateScales(p.scale_buttons);
-    setCurrentScale(p.current_scale);
+    setCurrentScale(p.current_scale >= SCALECOUNT ? 0 : p.current_scale);
 
     refresh_grid();
 }
@@ -376,6 +386,7 @@ void set_up_i2c() {
     for (u8 i = 0; i < 6; i++) map_voice(i, VOICE_JF, i, 0);
     for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_ER301, i, 0);
     for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_TXO_NOTE, i, 0);
+    set_jf_mode(0);
     
     switch (s.i2c_device) {
         case VOICE_JF:
@@ -569,34 +580,34 @@ void update_matrix(void) {
         
         for (u8 i = 0; i < 4; i++) {
             if (p.matrix_on[0]) {
-                counts[m] += p.matrix[0][i][m];
-                matrix_values[m] += getNote(i, 0) * p.matrix[0][i][m];
+                counts[m] += p.matrix[0][p.m_snapshot[0]][i][m];
+                matrix_values[m] += getNote(i, 0) * p.matrix[0][p.m_snapshot[0]][i][m];
             }
             
             if (p.matrix_on[1]) {
-                counts[m] += p.matrix[1][i][m];
-                matrix_values[m] += getModCV(i) * p.matrix[1][i][m] * 12;
+                counts[m] += p.matrix[1][p.m_snapshot[1]][i][m];
+                matrix_values[m] += getModCV(i) * p.matrix[1][p.m_snapshot[1]][i][m] * 12;
             }
         }
 
         for (u8 i = 0; i < 2; i++) {
             if (p.matrix_on[0]) {
-                counts[m] += p.matrix[0][i + 4][m];
-                matrix_values[m] += getGate(i, 0) * p.matrix[0][i + 4][m] * MATRIXGATEWEIGHT;
+                counts[m] += p.matrix[0][p.m_snapshot[0]][i + 4][m];
+                matrix_values[m] += getGate(i, 0) * p.matrix[0][p.m_snapshot[0]][i + 4][m] * MATRIXGATEWEIGHT;
             }
             
             if (p.matrix_on[1]) {
-                counts[m] += p.matrix[1][i + 4][m];
-                matrix_values[m] += getModGate(i) * p.matrix[1][i + 4][m] * MATRIXGATEWEIGHT;
+                counts[m] += p.matrix[1][p.m_snapshot[1]][i + 4][m];
+                matrix_values[m] += getModGate(i) * p.matrix[1][p.m_snapshot[1]][i + 4][m] * MATRIXGATEWEIGHT;
             }
         }
         
-        if (p.matrix_on[0] & p.matrix[0][6][m]) {
+        if (p.matrix_on[0] & p.matrix[0][p.m_snapshot[0]][6][m]) {
             counts[m]++;
             matrix_values[m] += reset_phase * MATRIXGATEWEIGHT;
         }
 
-        if (p.matrix_on[1] & p.matrix[1][6][m]) {
+        if (p.matrix_on[1] & p.matrix[1][p.m_snapshot[1]][6][m]) {
             counts[m]++;
             matrix_values[m] += reset_phase * MATRIXGATEWEIGHT;
         }
@@ -644,7 +655,7 @@ void update_matrix(void) {
     
     gate_length_mod = counts[6] ? (matrix_values[6] * 390) / (12 * MATRIXMAXSTATE * counts[6]) : 0;
     gate_length_mod += p.gate_length;
-    if (gate_length_mod < 40) gate_length_mod = 40; else if (gate_length_mod > 2000) gate_length_mod = 2000;    
+    if (gate_length_mod < 20) gate_length_mod = 20; else if (gate_length_mod > 2000) gate_length_mod = 2000;    
     
     if (matrix_values[7] > prevScale && matrix_values[7]) toggle_scale();
     
@@ -654,7 +665,12 @@ void update_matrix(void) {
 }
 
 void toggle_octave() {
-    set_octave(p.octave ? 0 : 1);
+    if (p.octave) 
+        prev_octave = p.octave;
+    else if (!prev_octave)
+        prev_octave = 1;
+        
+    set_octave(p.octave ? 0 : prev_octave);
 }
 
 void set_current_scale(u8 scale) {
@@ -671,9 +687,9 @@ void set_octave(s8 octave) {
 }
 
 void toggle_scale() {
-    u8 newScale;
+    u8 newScale = getCurrentScale();
     for (u8 i = 0; i < SCALECOUNT - 1; i++) {
-        newScale = (getCurrentScale() + 1) % SCALECOUNT;
+        newScale = (newScale + 1) % SCALECOUNT;
         if (getScaleCount(newScale) != 0) {
             setCurrentScale(newScale);
             p.current_scale = newScale;
@@ -717,19 +733,24 @@ void toggle_matrix_mode() {
 void clear_current_matrix() {
     for (int i = 0; i < MATRIXINS; i++)
         for (int o = 0; o < MATRIXOUTS; o++)
-            p.matrix[s.mi][i][o] = 0;
+            p.matrix[s.mi][p.m_snapshot[s.mi]][i][o] = 0;
     refresh_grid();
 }
     
 void randomize_current_matrix() {
     clear_current_matrix();
     for (u8 i = 0; i < 10; i++)
-        p.matrix[s.mi][rand() % MATRIXINS][(rand() % (MATRIXOUTS - 1)) + 1] = 1;
+        p.matrix[s.mi][p.m_snapshot[s.mi]][rand() % MATRIXINS][(rand() % (MATRIXOUTS - 1)) + 1] = 1;
+    refresh_grid();
+}
+
+void set_matrix_snapshot(u8 snapshot) {
+    p.m_snapshot[s.mi] = snapshot;
     refresh_grid();
 }
 
 void toggle_matrix_cell(u8 in, u8 out) {
-    p.matrix[s.mi][in][out] = (p.matrix[s.mi][in][out] + 1) % (MATRIXMAXSTATE + 1);
+    p.matrix[s.mi][p.m_snapshot[s.mi]][in][out] = (p.matrix[s.mi][p.m_snapshot[s.mi]][in][out] + 1) % (MATRIXMAXSTATE + 1);
     update_matrix();
     refresh_grid();
 }
@@ -1054,7 +1075,7 @@ void process_grid_trans(u8 x, u8 y, u8 on) {
 }
 
 void render_trans_page() {
-    u8 on = 15, mod = 6, off = 3;
+    u8 on = 15, mod = 6, off = 3, soff = 1;
 
     set_grid_led(0, 4, off);
     set_grid_led(0, 5, off);
@@ -1068,7 +1089,8 @@ void render_trans_page() {
     set_grid_led(15, 7, off);
 
     for (u8 i = 0; i < SCALECOUNT; i++) {
-        for (u8 j = 0; j < SCALELEN; j++) set_grid_led(2 + j, i + 4, p.scale_buttons[i][j] ? on : off);
+        for (u8 j = 0; j < SCALELEN; j++)
+            set_grid_led(2 + j, i + 4, p.scale_buttons[i][j] ? on : (j == 0 || j == SCALELEN - 1 ? off : soff));
     }
     
     u8 p1 = 8 - TRANSSEQLEN / 2;
@@ -1188,9 +1210,9 @@ void render_param_page() {
             for (u8 x = 0; x < 16; x++) for (u8 y = 3; y < 5; y++) set_grid_led(x, y, off);
             
             y = y2 = 3;
-            p1 = p.gate_length / 129;
+            p1 = p.gate_length / 64;
             if (p1 > 16) { y = 4; p1 -= 16; }
-            p2 = gate_length_mod / 129;
+            p2 = gate_length_mod / 64;
             if (p2 > 16) { y2 = 4; p2 -= 16; }
             set_grid_led(p2, y2, mod);
             set_grid_led(p1, y, on);
@@ -1212,8 +1234,13 @@ void process_grid_matrix(u8 x, u8 y, u8 on) {
         return;
     }
     
-    if (x == 0 && y == 4 && on) {
+    if (x == 0 && y == 6 && on) {
         toggle_matrix_mode();
+        return;
+    }
+    
+    if (x > 0 && x < 3 && y > 2 && y < 5) {
+        set_matrix_snapshot(y - 3 + (x - 1) * 2);
         return;
     }
 
@@ -1228,10 +1255,15 @@ void process_grid_matrix(u8 x, u8 y, u8 on) {
 void render_matrix_page() {
     set_grid_led(0, 7, 10);
     set_grid_led(1, 7, 10);
-    set_grid_led(0, 4, p.matrix_mode == MATRIXMODEEDIT ? 4 : 10);
+    set_grid_led(0, 6, p.matrix_mode == MATRIXMODEEDIT ? 4 : 10);
     
     u8 d = 12 / (MATRIXMAXSTATE + 1);
     u8 a = p.matrix_on[s.mi] ? 3 : 2;
+    
+    set_grid_led(1, 3, p.m_snapshot[s.mi] == 0 ? 10 : 4);
+    set_grid_led(1, 4, p.m_snapshot[s.mi] == 1 ? 10 : 4);
+    set_grid_led(2, 3, p.m_snapshot[s.mi] == 2 ? 10 : 4);
+    set_grid_led(2, 4, p.m_snapshot[s.mi] == 3 ? 10 : 4);
     
     for (u8 x = 0; x < MATRIXOUTS; x++)
         for (u8 y = 0; y < MATRIXINS; y++) {
@@ -1240,7 +1272,7 @@ void render_matrix_page() {
             if (x < 7) _x = x + 3;
             else if (x < 9) _x = x + 4;
             else continue;
-            set_grid_led(_x, y + 1, p.matrix[s.mi][y][x] * d + a);
+            set_grid_led(_x, y + 1, p.matrix[s.mi][p.m_snapshot[s.mi]][y][x] * d + a);
         }
 }
 
@@ -1248,12 +1280,12 @@ void process_grid_note_delay(u8 x, u8 y, u8 on) {
     if (!on) return;
     
     if (y == 2 && x > 3 && x < 12) {
-        set_delay_width(x - 3);
+        set_swing(x - 4);
         return;
     }
     
     if (y == 3 && x > 3 && x < 12) {
-        set_swing(x - 4);
+        set_delay_width(x - 3);
         return;
     }
     
@@ -1281,11 +1313,11 @@ void render_note_delay_page() {
     set_grid_led(15, 2, s.run ? 15 : 4);
     
     for (u8 x = 4; x < 12; x++) set_grid_led(x, 2, off);
-    set_grid_led(3 + p.delay_width, 2, 15);
-    
-    for (u8 x = 4; x < 12; x++) set_grid_led(x, 3, off);
-    set_grid_led(4 + p.swing, 3, 15);
+    set_grid_led(4 + p.swing, 2, 15);
 
+    for (u8 x = 4; x < 12; x++) set_grid_led(x, 3, off);
+    set_grid_led(3 + p.delay_width, 3, 15);
+    
     for (u8 x = 0; x < 16; x++)
         for (u8 y = s.i2c_device == VOICE_JF ? 5 : 4; y < 8; y++)
             set_grid_led(x, y, x == 0 || x == 8 ? 8 : off);
@@ -1437,17 +1469,21 @@ char* itoa(int value, char* result, int base) {
 
 /*
 
-- scale switch mod gets stuck
-- save sequencer data
-- adjust brightness for transpose
-- separate octave + for modulation from buttons
-- when sequencer is stopped editing affects the last selected note, not the one where sequencer is
+-- new
+
+- matrix snapshots
+- swing shifted
+- 4 scales
+- ansible crash fix
+- octave up/down buttons
 - jf mode should be reset when choosing another i2c device
+- minimal gate lenght reduced
+
+-- soon
 
 - parameter sequencer
+- copy between matrix and volume snapshots
 - undo matrix random/clear
-- matrix snapshots (with ability to select multiple at once?)
-- clear / random for delays and i2c params?
 - delays are not calculated properly for ext clock
 - make gate len proportional to ext clock
 - improve teletype display
@@ -1455,7 +1491,7 @@ char* itoa(int value, char* result, int base) {
 -- not tested:
 
 - fix button press on multipass
-- ansible crash fix
+- fix for front panel button hold
 
 - fix speed not loading from presets on ansible
 - selected scale wasn't saved with preset, fixed
