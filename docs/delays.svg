@@ -26,7 +26,7 @@
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
      inkscape:zoom="2"
-     inkscape:cx="199.21917"
+     inkscape:cx="319.69915"
      inkscape:cy="183.05558"
      inkscape:document-units="mm"
      inkscape:current-layer="layer1"
@@ -48,7 +48,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -202,7 +202,7 @@
        y="234.51039"
        ry="1.2284234" />
     <rect
-       style="fill:#e9afdd;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
+       style="fill:none;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
        id="rect4602-0-3"
        width="5.2916665"
        height="5.2916665"
@@ -306,7 +306,7 @@
        y="234.51039"
        ry="1.2284234" />
     <rect
-       style="fill:none;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
+       style="fill:#ff2a2a;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
        id="rect4602-12-3"
        width="5.2916665"
        height="5.2916665"
@@ -474,7 +474,7 @@
        y="250.38539"
        ry="1.2284234" />
     <rect
-       style="fill:none;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
+       style="fill:#ff9955;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
        id="rect4602-3-1"
        width="5.2916665"
        height="5.2916665"
@@ -482,7 +482,7 @@
        y="250.38539"
        ry="1.2284234" />
     <rect
-       style="fill:none;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
+       style="fill:#ff9955;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
        id="rect4602-51-67"
        width="5.2916665"
        height="5.2916665"
@@ -490,7 +490,7 @@
        y="250.38539"
        ry="1.2284234" />
     <rect
-       style="fill:none;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
+       style="fill:#ff9955;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
        id="rect4602-59-4"
        width="5.2916665"
        height="5.2916665"
@@ -498,7 +498,7 @@
        y="250.38539"
        ry="1.2284234" />
     <rect
-       style="fill:none;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
+       style="fill:#ff9955;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
        id="rect4602-7-3"
        width="5.2916665"
        height="5.2916665"
@@ -506,7 +506,7 @@
        y="250.38539"
        ry="1.2284234" />
     <rect
-       style="fill:none;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
+       style="fill:#ff9955;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
        id="rect4602-39-7"
        width="5.2916665"
        height="5.2916665"
@@ -514,7 +514,7 @@
        y="250.38539"
        ry="1.2284234" />
     <rect
-       style="fill:none;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
+       style="fill:#ff9955;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
        id="rect4602-93-2"
        width="5.2916665"
        height="5.2916665"
@@ -522,7 +522,7 @@
        y="250.38539"
        ry="1.2284234" />
     <rect
-       style="fill:none;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
+       style="fill:#ff9955;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
        id="rect4602-36-5"
        width="5.2916665"
        height="5.2916665"
@@ -530,7 +530,7 @@
        y="250.38539"
        ry="1.2284234" />
     <rect
-       style="fill:none;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
+       style="fill:#ff9955;fill-opacity:1;stroke:#050000;stroke-width:0.1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.4299517;opacity:1"
        id="rect4602-393-57"
        width="5.2916665"
        height="5.2916665"
@@ -1234,7 +1234,7 @@
          id="tspan5013-0-0"
          x="18.718725"
          y="261.0264"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:2.11666656px;font-family:Mandatory;-inkscape-font-specification:'Mandatory, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;stroke-width:0.26458332">note delays</tspan></text>
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:2.11666656px;font-family:Mandatory;-inkscape-font-specification:'Mandatory, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;stroke-width:0.26458332">delays</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:1.25;font-family:Mandatory;-inkscape-font-specification:'Mandatory, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
@@ -1249,13 +1249,13 @@
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:1.25;font-family:Mandatory;-inkscape-font-specification:'Mandatory, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
-       x="69.617386"
-       y="240.18513"
+       x="69.881966"
+       y="254.6049"
        id="text987-7"><tspan
          sodipodi:role="line"
          id="tspan985-3"
-         x="69.617386"
-         y="240.18513"
+         x="69.881966"
+         y="254.6049"
          style="stroke-width:0.26458332">DELAY SPAN</tspan></text>
     <text
        xml:space="preserve"
@@ -1271,5 +1271,30 @@
          x="21.175102"
          y="284.20178"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:2.11666656px;font-family:Mandatory;-inkscape-font-specification:'Mandatory, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;stroke-width:0.26458332">START/STOP</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:1.25;font-family:Mandatory;-inkscape-font-specification:'Mandatory, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="75.20327"
+       y="246.53516"
+       id="text987-7-5"><tspan
+         sodipodi:role="line"
+         id="tspan985-3-9"
+         x="75.20327"
+         y="246.53516"
+         style="stroke-width:0.26458332">SWING</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:1.25;font-family:Mandatory;-inkscape-font-specification:'Mandatory, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="24.307037"
+       y="276.80704"
+       id="text5015-7-0-4"
+       transform="rotate(-26.047468)"
+       inkscape:transform-center-x="5.078121"
+       inkscape:transform-center-y="3.7417712"><tspan
+         sodipodi:role="line"
+         id="tspan5013-0-8-0"
+         x="24.307037"
+         y="276.80704"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:2.11666656px;font-family:Mandatory;-inkscape-font-specification:'Mandatory, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;stroke-width:0.26458332">SEQ ON/OFF</tspan></text>
   </g>
 </svg>
