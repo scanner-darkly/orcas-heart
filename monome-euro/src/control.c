@@ -702,7 +702,7 @@ void toggle_scale() {
 void toggle_scale_note(u8 scale, u8 note) {
     p.scale_buttons[scale][note] = !p.scale_buttons[scale][note];
     updateScales(p.scale_buttons);
-    if (s.page == PAGE_PARAM) refresh_grid();
+    refresh_grid();
 }
 
 void select_page(u8 p) {
