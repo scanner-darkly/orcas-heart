@@ -44,14 +44,14 @@ jobs:
     - name: build firmware
       run: |
         PATH="$HOME/avr32-tools/bin:$PATH"
-        cd monome_euro/multipass/monome_euro/${{matrix.module}}
+        cd monome-euro/multipass/monome_euro/${{matrix.module}}
         find ../../../.. -name '*.o' -delete
         make
         
     - name: prepare files
       id: get_file_name
       run: |
-        HEX_FILE_PATH=`echo monome_euro/multipass/monome_euro/${{matrix.module}}/*.hex "$1"`
+        HEX_FILE_PATH=`echo monome-euro/multipass/monome_euro/${{matrix.module}}/*.hex "$1"`
         HEX_FILE=`basename $HEX_FILE_PATH`
         NAMED_FILE=`echo "${HEX_FILE//multipass_/${{github.event.repository.name}}_}"`
         echo ::set-output name=named_file::$NAMED_FILE
