@@ -11,7 +11,6 @@
 #include "types.h"
 #include "engine.h"
 
-
 // ----------------------------------------------------------------------------
 // firmware dependent stuff starts here
 
@@ -29,7 +28,7 @@ typedef struct {
     u8 page;
     u8 param;
     u8 mi;
-    u8 i2c_device;
+    u8 i2c_device[5];
     u8 run;
 } shared_data_t;
 
