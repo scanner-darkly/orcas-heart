@@ -9,6 +9,7 @@
 
 #pragma once
 #include "types.h"
+#include "constants.h"
 #include "engine.h"
 
 // ----------------------------------------------------------------------------
@@ -28,7 +29,7 @@ typedef struct {
     u8 page;
     u8 param;
     u8 mi;
-    u8 i2c_device[5];
+    u8 i2c_device[MAX_DEVICE_COUNT];
     u8 run;
 } shared_data_t;
 
