@@ -388,6 +388,7 @@ void set_up_i2c() {
     for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_ER301, i, 0);
     for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_TXO_NOTE, i, 0);
     for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_DISTING_EX, i, 0);
+    for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_I2C2MIDI_1, i, 0);
     set_jf_mode(0);
 
     if (s.i2c_device[VOICE_JF]) {
@@ -408,6 +409,10 @@ void set_up_i2c() {
     
     if (s.i2c_device[VOICE_DISTING_EX]) {
         for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_DISTING_EX, i, 1);
+    }
+    
+    if (s.i2c_device[VOICE_I2C2MIDI_1]) {
+        for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_I2C2MIDI_1, i, 1);
     }
 }
 
@@ -1342,6 +1347,8 @@ void process_grid_i2c(u8 x, u8 y, u8 on) {
             toggle_i2c_device(VOICE_TXO_NOTE);
         else if (y == 6)
             toggle_i2c_device(VOICE_DISTING_EX);
+        else if (y == 7)
+            toggle_i2c_device(VOICE_I2C2MIDI_1);
     }
     
     if (x == 0 && y > 3) {
@@ -1385,6 +1392,7 @@ void render_i2c_page() {
     set_grid_led(15, 4, s.i2c_device[VOICE_JF] ? on : off);
     set_grid_led(15, 5, s.i2c_device[VOICE_TXO_NOTE] ? on : off);
     set_grid_led(15, 6, s.i2c_device[VOICE_DISTING_EX] ? on : off);
+    set_grid_led(15, 7, s.i2c_device[VOICE_I2C2MIDI_1] ? on : off);
     
     for (u8 i = 0; i < 8; i++) {
         for (u8 y = 0; y < p.voice_vol[i][p.vol_index]; y++)
