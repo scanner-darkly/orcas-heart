@@ -412,7 +412,10 @@ void set_up_i2c() {
     }
     
     if (s.i2c_device[VOICE_I2C2MIDI_1]) {
-        for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_I2C2MIDI_1, i, 1);
+        for (u8 i = 0; i < NOTECOUNT; i++) {
+            map_voice(i, VOICE_I2C2MIDI_1, i, 1);
+            set_output_transpose(VOICE_I2C2MIDI_1, i, 48);
+        }
     }
 }
 
