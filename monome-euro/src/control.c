@@ -388,7 +388,7 @@ void set_up_i2c() {
     for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_ER301, i, 0);
     for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_TXO_NOTE, i, 0);
     for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_DISTING_EX, i, 0);
-    for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_I2C2MIDI_CH, i, 0);
+    for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_I2C2MIDI_1, i, 0);
     set_jf_mode(0);
 
     if (s.i2c_device[VOICE_JF]) {
@@ -411,10 +411,10 @@ void set_up_i2c() {
         for (u8 i = 0; i < NOTECOUNT; i++) map_voice(i, VOICE_DISTING_EX, i, 1);
     }
     
-    if (s.i2c_device[VOICE_I2C2MIDI_CH]) {
+    if (s.i2c_device[VOICE_I2C2MIDI_1]) {
         for (u8 i = 0; i < NOTECOUNT; i++) {
-            map_voice(i, VOICE_I2C2MIDI_CH, i, 1);
-            set_output_transpose(VOICE_I2C2MIDI_CH, i, 3277);
+            map_voice(i, VOICE_I2C2MIDI_1, i, 1);
+            set_output_transpose(VOICE_I2C2MIDI_1, i, 3277);
         }
     }
 }
