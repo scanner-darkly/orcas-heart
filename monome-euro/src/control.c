@@ -410,7 +410,6 @@ void set_up_i2c() {
     if (s.i2c_device[VOICE_DISTING_EX]) {
         for (u8 i = 0; i < NOTECOUNT; i++) {
             map_voice(i, VOICE_DISTING_EX, i, 1);
-            set_output_transpose(VOICE_DISTING_EX, i, 36);
         }
     }
     
