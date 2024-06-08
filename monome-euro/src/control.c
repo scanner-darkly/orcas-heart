@@ -178,7 +178,6 @@ void init_presets(void) {
     s.param = PARAM_LEN;
     s.mi = 0;
     for (u8 i = 0; i < MAX_DEVICE_COUNT; i++) s.i2c_device[i] = 0;
-    s.i2c_device[VOICE_JF] = 1;
     s.run = 1;
     store_shared_data_to_flash(&s);
     
